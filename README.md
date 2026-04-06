@@ -2,9 +2,9 @@
 
 An autonomous AI agent that monitors data center alerts, triages incidents, and escalates critical issues — replacing manual on-call toil with a tool-use loop that reasons, correlates, and acts in real time.
 
-Internal AI tooling that keeps infrastructure teams focused on what matters: an agent that handles the repetitive alert noise so engineers can focus on the hard problems.
+The agent receives an alert, gathers context, decides, and acts. Each step streams to the dashboard live.
 
-<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/architecture.svg" alt="Architecture" width="100%">
+<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/agent-pipeline.svg" alt="Agent pipeline" width="100%">
 
 ## Quick start
 
@@ -42,11 +42,9 @@ LLM_API_KEY=sk-...
 
 ```
 
-## How the agent works
+## Architecture
 
-The triage agent runs a tool-use loop: receive alert, gather context, decide, act. Each step streams to the dashboard in real time.
-
-<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/agent-pipeline.svg" alt="Agent pipeline" width="100%">
+<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/architecture.svg" alt="Architecture" width="100%">
 
 The agent has 5 tools: `query_recent_alerts` (find correlated events), `get_host_info` (hardware context), `search_runbooks` (RAG over 14 runbooks), `create_incident` (open a tracked record), and `escalate` (notify on-call via webhook). It classifies each alert as **noise**, **acknowledged**, **incident**, or **critical_escalation**.
 
