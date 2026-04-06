@@ -3,9 +3,11 @@ import hashlib
 import hmac
 import json
 import logging
+import random
 import uuid
 from typing import Any
 
+import aiosqlite
 import httpx
 
 from backend.config import settings
@@ -15,6 +17,7 @@ from backend.db.database import (
     insert_escalation,
     insert_incident,
     insert_audit_log,
+    insert_webhook_dlq,
 )
 from backend.knowledge.rag import search_runbooks as kb_search
 
@@ -34,7 +37,7 @@ async def query_recent_alerts(
         host=host,
         category=category,
         severity=severity,
-        limit=20,
+        limit=settings.ALERT_QUERY_LIMIT,
     )
 
     if not alerts:
@@ -108,7 +111,7 @@ async def create_incident_tool(
     correlated_alert_ids: list[str] | None = None,
     assigned_team: str | None = None,
 ) -> str:
-    incident_id = f"INC-{uuid.uuid4().hex[:8].upper()}"
+    incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
 
     incident = {
         "id": incident_id,
@@ -118,7 +121,7 @@ async def create_incident_tool(
         "root_cause": root_cause,
         "remediation_steps": remediation_steps or [],
         "correlated_alert_ids": correlated_alert_ids or [],
-        "assigned_team": assigned_team or "dc-ops-tokyo",
+        "assigned_team": assigned_team or settings.DEFAULT_TEAM,
         "status": "open",
     }
 
@@ -147,7 +150,7 @@ async def escalate_tool(
     urgency: str,
     notification_channels: list[str] | None = None,
 ) -> str:
-    escalation_id = f"ESC-{uuid.uuid4().hex[:8].upper()}"
+    escalation_id = f"ESC-{uuid.uuid4().hex[:12].upper()}"
     channels = notification_channels or ["slack", "pager"]
 
     escalation = {
@@ -168,35 +171,54 @@ async def escalate_tool(
     logger.info("Escalation %s sent for incident %s (urgency: %s)",
                 escalation_id, incident_id, urgency)
 
+    webhook_status = "no_webhook_configured"
     if settings.WEBHOOK_URL:
-        task = asyncio.create_task(_send_webhook(escalation))
-        _webhook_tasks.add(task)
-        task.add_done_callback(_webhook_tasks.discard)
+        webhook_status = await _send_webhook_with_retry(escalation)
 
     return json.dumps({
         "escalation_id": escalation_id,
         "incident_id": incident_id,
         "urgency": urgency,
         "notification_channels": channels,
+        "webhook_status": webhook_status,
         "message": f"Escalation {escalation_id} sent via {', '.join(channels)}",
     })
 
 
-_webhook_tasks: set[asyncio.Task] = set()
+async def _send_webhook_with_retry(payload: dict) -> str:
+    """Send webhook with retry and DLQ on final failure. Returns delivery status."""
+    body = json.dumps(payload)
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if settings.WEBHOOK_SECRET:
+        sig = hmac.new(settings.WEBHOOK_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+        headers["X-Signature-SHA256"] = sig
 
+    max_retries = settings.WEBHOOK_MAX_RETRIES
+    last_error = ""
 
-async def _send_webhook(payload: dict) -> None:
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(settings.WEBHOOK_URL, content=body, headers=headers)
+                resp.raise_for_status()
+                logger.info("Webhook delivered: %d", resp.status_code)
+                return "delivered"
+        except Exception as e:
+            last_error = str(e)
+            if attempt < max_retries - 1:
+                delay = min(2 ** attempt, 10) + random.uniform(0, 1)
+                logger.warning("Webhook attempt %d/%d failed: %s, retrying in %.1fs",
+                               attempt + 1, max_retries, last_error, delay)
+                await asyncio.sleep(delay)
+
+    # All retries exhausted — write to dead-letter queue
+    logger.error("Webhook delivery failed after %d attempts: %s", max_retries, last_error)
     try:
-        body = json.dumps(payload)
-        headers = {"Content-Type": "application/json"}
-        if settings.WEBHOOK_SECRET:
-            sig = hmac.new(settings.WEBHOOK_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
-            headers["X-Signature-SHA256"] = sig
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(settings.WEBHOOK_URL, content=body, headers=headers)
-            logger.info("Webhook sent: %d", resp.status_code)
+        await insert_webhook_dlq(body, last_error, max_retries)
     except Exception:
-        logger.exception("Webhook delivery failed")
+        logger.exception("Failed to write to webhook DLQ")
+
+    return "failed"
 
 
 TOOL_REGISTRY: dict[str, Any] = {
@@ -215,6 +237,16 @@ async def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
 
     try:
         return await func(**arguments)
+    except aiosqlite.Error as e:
+        logger.exception("Database error in tool %s", tool_name)
+        return json.dumps({"error": f"Database error: {e}", "severity": "fatal"})
+    except httpx.HTTPStatusError as e:
+        logger.exception("HTTP error in tool %s", tool_name)
+        severity = "transient" if e.response.status_code >= 500 else "fatal"
+        return json.dumps({"error": f"HTTP error {e.response.status_code}", "severity": severity})
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.exception("Data error in tool %s", tool_name)
+        return json.dumps({"error": f"Data error: {e}", "severity": "fatal"})
     except Exception as e:
         logger.exception("Tool execution failed: %s", tool_name)
-        return json.dumps({"error": f"Tool execution failed: {str(e)}"})
+        return json.dumps({"error": f"Tool execution failed: {str(e)}", "severity": "transient"})

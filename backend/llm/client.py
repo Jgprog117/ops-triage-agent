@@ -1,12 +1,18 @@
 import asyncio
 import json
 import logging
-import uuid
+import random
 from typing import Any
 
 import httpx
 
 from backend.config import settings
+from backend.exceptions import (
+    LLMRateLimitError,
+    LLMResponseError,
+    LLMServerError,
+    LLMTimeoutError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ class LLMClient:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=120)
+            self._client = httpx.AsyncClient(timeout=settings.LLM_TIMEOUT)
         return self._client
 
     async def close(self) -> None:
@@ -39,22 +45,50 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.2,
-        _max_retries: int = 5,
+        _max_retries: int | None = None,
     ) -> dict[str, Any]:
-        for attempt in range(_max_retries):
+        max_retries = _max_retries if _max_retries is not None else settings.LLM_MAX_RETRIES
+
+        for attempt in range(max_retries):
             try:
                 if self.provider == "anthropic":
                     return await self._anthropic_completion(messages, tools, temperature)
                 return await self._openai_completion(messages, tools, temperature)
+            except httpx.TimeoutException:
+                if attempt == max_retries - 1:
+                    raise LLMTimeoutError(
+                        f"LLM request timed out after {max_retries} attempts"
+                    )
+                delay = min(2 ** attempt, 30) + random.uniform(0, 1)
+                logger.warning("LLM timeout, retrying in %.1fs (attempt %d/%d)", delay, attempt + 1, max_retries)
+                await asyncio.sleep(delay)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code != 429 or attempt == _max_retries - 1:
-                    raise
-                retry_after = float(e.response.headers.get("retry-after", 2 ** attempt))
-                logger.warning("Rate limited, retrying in %.1fs (attempt %d/%d)", retry_after, attempt + 1, _max_retries)
-                await asyncio.sleep(retry_after)
-        raise RuntimeError("unreachable")
+                status = e.response.status_code
+                is_last = attempt == max_retries - 1
 
-    # -- OpenAI-compatible path (unchanged) ------------------------------------
+                if status == 429:
+                    if is_last:
+                        raise LLMRateLimitError(
+                            f"Rate limited after {max_retries} retries"
+                        )
+                    retry_after = float(e.response.headers.get("retry-after", 2 ** attempt))
+                    jitter = random.uniform(0, 1)
+                    logger.warning("Rate limited, retrying in %.1fs (attempt %d/%d)", retry_after + jitter, attempt + 1, max_retries)
+                    await asyncio.sleep(retry_after + jitter)
+                elif 500 <= status < 600:
+                    if is_last:
+                        raise LLMServerError(
+                            f"LLM server error {status} after {max_retries} retries"
+                        )
+                    delay = min(2 ** attempt, 30) + random.uniform(0, 1)
+                    logger.warning("LLM server error %d, retrying in %.1fs (attempt %d/%d)", status, delay, attempt + 1, max_retries)
+                    await asyncio.sleep(delay)
+                else:
+                    raise  # 4xx (non-429) — don't retry
+
+        raise LLMServerError("unreachable — retry loop exited without return or raise")
+
+    # -- OpenAI-compatible path ------------------------------------------------
 
     async def _openai_completion(
         self,
@@ -203,7 +237,12 @@ class LLMClient:
     # -- Shared accessors (work with normalized OpenAI format) -----------------
 
     def extract_message(self, response: dict[str, Any]) -> dict[str, Any]:
-        return response["choices"][0]["message"]
+        try:
+            return response["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise LLMResponseError(
+                f"Malformed LLM response: {e}", raw_response=response
+            ) from e
 
     def has_tool_calls(self, message: dict[str, Any]) -> bool:
         return bool(message.get("tool_calls"))

@@ -1,9 +1,20 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from backend.auth import verify_api_key
-from backend.config import settings
+from backend.config import Settings, settings
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+
+
+class ConfigUpdate(BaseModel):
+    ALERT_INTERVAL_MIN: Optional[int] = None
+    ALERT_INTERVAL_MAX: Optional[int] = None
+    SCENARIO_PROBABILITY: Optional[float] = None
+    WEBHOOK_URL: Optional[str] = None
+    WEBHOOK_SECRET: Optional[str] = None
 
 
 @router.get("")
@@ -19,19 +30,19 @@ async def get_config() -> dict:
 
 @router.post("")
 async def update_config(
-    updates: dict,
+    updates: ConfigUpdate,
     _: str = Depends(verify_api_key),
 ) -> dict:
-    allowed_keys = {
-        "ALERT_INTERVAL_MIN", "ALERT_INTERVAL_MAX", "SCENARIO_PROBABILITY",
-        "WEBHOOK_URL", "WEBHOOK_SECRET",
-    }
     applied = {}
-
-    for key, value in updates.items():
-        upper_key = key.upper()
-        if upper_key in allowed_keys:
-            setattr(settings, upper_key, value)
-            applied[upper_key] = value
+    for field_name, expected_type in Settings.UPDATABLE_FIELDS.items():
+        value = getattr(updates, field_name, None)
+        if value is not None:
+            if not isinstance(value, expected_type):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{field_name} must be {expected_type.__name__}, got {type(value).__name__}",
+                )
+            setattr(settings, field_name, value)
+            applied[field_name] = value
 
     return {"applied": applied, "message": f"Updated {len(applied)} setting(s)"}

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 CREATE TABLE IF NOT EXISTS escalations (
     id TEXT PRIMARY KEY,
-    incident_id TEXT REFERENCES incidents(id),
+    incident_id TEXT REFERENCES incidents(id) ON DELETE CASCADE,
     reason TEXT NOT NULL,
     urgency TEXT NOT NULL,
     notification_channels TEXT,
@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
     details TEXT
 );
 
+CREATE TABLE IF NOT EXISTS webhook_dlq (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payload TEXT NOT NULL,
+    error TEXT NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp);
 CREATE INDEX IF NOT EXISTS idx_alerts_rack ON alerts(rack);
 CREATE INDEX IF NOT EXISTS idx_alerts_host ON alerts(host);
@@ -82,6 +90,13 @@ CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
 CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category);
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
+
+CREATE TRIGGER IF NOT EXISTS trg_incidents_updated_at
+AFTER UPDATE ON incidents
+BEGIN
+    UPDATE incidents SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
 """
 
 
@@ -101,6 +116,9 @@ async def init_database() -> None:
     _db.row_factory = aiosqlite.Row
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA foreign_keys=ON")
+    await _db.execute("PRAGMA busy_timeout=5000")
+    await _db.execute("PRAGMA synchronous=NORMAL")
+    await _db.execute("PRAGMA cache_size=-64000")
     await _db.executescript(SCHEMA)
     await _db.commit()
     logger.info("Database initialized at %s", db_path)
@@ -312,32 +330,32 @@ async def insert_audit_log(event_type: str, entity_id: str | None = None, detail
     await db.commit()
 
 
+async def insert_webhook_dlq(payload: str, error: str, attempts: int) -> None:
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO webhook_dlq (payload, error, attempts) VALUES (?, ?, ?)",
+        (payload, error, attempts),
+    )
+    await db.commit()
+
+
 async def get_dashboard_stats() -> dict:
     db = await get_db()
-
-    total_alerts = (await db.execute_fetchall("SELECT COUNT(*) as c FROM alerts"))[0]["c"]
-
-    alerts_last_hour = (await db.execute_fetchall(
-        "SELECT COUNT(*) as c FROM alerts WHERE timestamp >= datetime('now', '-1 hour')"
-    ))[0]["c"]
-
-    total_incidents = (await db.execute_fetchall("SELECT COUNT(*) as c FROM incidents"))[0]["c"]
-
-    open_incidents = (await db.execute_fetchall(
-        "SELECT COUNT(*) as c FROM incidents WHERE status IN ('open', 'investigating')"
-    ))[0]["c"]
-
-    p1_open = (await db.execute_fetchall(
-        "SELECT COUNT(*) as c FROM incidents WHERE severity = 'P1' AND status IN ('open', 'investigating')"
-    ))[0]["c"]
-
-    total_escalations = (await db.execute_fetchall("SELECT COUNT(*) as c FROM escalations"))[0]["c"]
+    row = (await db.execute_fetchall("""
+        SELECT
+            (SELECT COUNT(*) FROM alerts) AS total_alerts,
+            (SELECT COUNT(*) FROM alerts WHERE timestamp >= datetime('now', '-1 hour')) AS alerts_last_hour,
+            (SELECT COUNT(*) FROM incidents) AS total_incidents,
+            (SELECT COUNT(*) FROM incidents WHERE status IN ('open', 'investigating')) AS open_incidents,
+            (SELECT COUNT(*) FROM incidents WHERE severity = 'P1' AND status IN ('open', 'investigating')) AS p1_open,
+            (SELECT COUNT(*) FROM escalations) AS total_escalations
+    """))[0]
 
     return {
-        "total_alerts": total_alerts,
-        "alerts_last_hour": alerts_last_hour,
-        "total_incidents": total_incidents,
-        "open_incidents": open_incidents,
-        "p1_open": p1_open,
-        "total_escalations": total_escalations,
+        "total_alerts": row["total_alerts"],
+        "alerts_last_hour": row["alerts_last_hour"],
+        "total_incidents": row["total_incidents"],
+        "open_incidents": row["open_incidents"],
+        "p1_open": row["p1_open"],
+        "total_escalations": row["total_escalations"],
     }
