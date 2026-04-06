@@ -4,7 +4,7 @@ An autonomous AI agent that monitors data center alerts, triages incidents, and 
 
 The agent receives an alert, gathers context, decides, and acts. Each step streams to the dashboard live.
 
-<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/agent-pipeline.svg" alt="Agent pipeline" width="100%">
+![Agent pipeline](docs/agent-pipeline.gif)
 
 ## Quick start
 

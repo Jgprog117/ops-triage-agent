@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #101014; color: #e4e4e7; font-family: system-ui, -apple-system, sans-serif; padding: 32px 40px; width: 620px; }
+
+  .pipeline { position: relative; padding-left: 28px; }
+  .pipeline::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: #1e1e22; }
+
+  .rail { position: absolute; left: 7px; top: 0; width: 2px; background: #2563eb; height: 0; opacity: 0.5; transition: none; }
+
+  .step { position: relative; padding: 8px 0; opacity: 0; transform: translateY(6px); }
+  .step.visible { opacity: 1; transform: translateY(0); transition: opacity 0.4s, transform 0.4s; }
+
+  .dot { position: absolute; left: -28px; top: 14px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #2e2e33; background: #101014; z-index: 1; transition: all 0.3s; }
+  .dot.active { border-color: #2563eb; background: #2563eb; box-shadow: 0 0 8px #2563eb50; }
+  .dot.done { border-color: #22c55e; background: #22c55e; box-shadow: none; }
+  .dot.action { border-color: #dc2626; background: #dc2626; box-shadow: none; }
+  .dot.decision { border-color: #d97706; background: #d97706; box-shadow: 0 0 8px #d9770640; }
+
+  .card { background: #1e1e22; border: 1px solid #2e2e33; border-radius: 6px; padding: 10px 14px; }
+  .card.blue { border-color: #2563eb; }
+  .card.red { border-color: #dc2626; }
+  .card.amber { border-color: #d97706; }
+
+  .title { font-size: 13px; font-weight: 500; color: #e4e4e7; }
+  .sub { font-size: 11px; color: #71717a; margin-top: 3px; opacity: 0; transition: opacity 0.4s; }
+  .sub.visible { opacity: 1; }
+
+  .decision-options { margin-top: 6px; }
+  .option { font-size: 11px; color: #52525b; padding: 2px 0; }
+  .option.chosen { color: #f87171; font-weight: 500; background: #dc262610; border-radius: 3px; padding: 2px 6px; margin-left: -6px; }
+  .option .reason { color: #71717a; font-weight: 400; margin-left: 8px; }
+
+  .end { font-size: 10px; color: #3f3f46; padding-top: 12px; padding-left: 4px; }
+</style>
+</head>
+<body>
+
+<div class="pipeline" id="pipeline">
+  <div class="rail" id="rail"></div>
+
+  <div class="step" data-delay="200">
+    <span class="dot"></span>
+    <div class="card">
+      <div class="title">Alert: GPU thermal throttling on node-gpu-rack12-01</div>
+      <div class="sub" style="opacity:1;color:#52525b">warning / gpu / rack-12</div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1200" data-sub-delay="800">
+    <span class="dot"></span>
+    <div class="card">
+      <div class="title">Checking recent alerts in rack-12</div>
+      <div class="sub">Found 3 correlated alerts (thermal cascade in progress)</div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1200" data-sub-delay="800">
+    <span class="dot"></span>
+    <div class="card">
+      <div class="title">Searching runbooks: GPU thermal throttling</div>
+      <div class="sub">2 sections from gpu_thermal_throttling.md</div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1200" data-sub-delay="800">
+    <span class="dot"></span>
+    <div class="card">
+      <div class="title">Looking up node-gpu-rack12-01</div>
+      <div class="sub">8x A100 80GB, healthy, 2,104h uptime</div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1400" data-type="decision">
+    <span class="dot"></span>
+    <div class="card amber">
+      <div class="title" style="color:#d97706">Assessment</div>
+      <div class="decision-options">
+        <div class="option" data-opt="1">noise / acknowledged</div>
+        <div class="option" data-opt="2">create incident</div>
+        <div class="option chosen-target" data-opt="3">create incident + escalate<span class="reason"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1400" data-sub-delay="800" data-type="action">
+    <span class="dot"></span>
+    <div class="card blue">
+      <div class="title">Creating incident: Thermal cascade in rack-12</div>
+      <div class="sub">Created INC-A4EB2CFB (P1) — assigned to dc-ops-tokyo</div>
+    </div>
+  </div>
+
+  <div class="step" data-delay="1200" data-type="escalation">
+    <span class="dot"></span>
+    <div class="card red">
+      <div class="title" style="color:#f87171">Escalated via slack, pager — immediate urgency</div>
+    </div>
+  </div>
+</div>
+
+<div class="end" id="end" style="opacity:0">Triage complete — result streamed to dashboard</div>
+
+<script>
+function animate() {
+  const steps = document.querySelectorAll('.step');
+  const rail = document.getElementById('rail');
+  const end = document.getElementById('end');
+  const pipeline = document.getElementById('pipeline');
+
+  // Reset
+  steps.forEach(s => {
+    s.classList.remove('visible');
+    const dot = s.querySelector('.dot');
+    dot.className = 'dot';
+    const sub = s.querySelector('.sub');
+    if (sub) sub.classList.remove('visible');
+    const chosen = s.querySelector('.chosen-target');
+    if (chosen) { chosen.classList.remove('chosen'); chosen.querySelector('.reason').textContent = ''; }
+  });
+  rail.style.transition = 'none';
+  rail.style.height = '0px';
+  end.style.opacity = '0';
+
+  let totalDelay = 0;
+
+  steps.forEach((step, i) => {
+    const delay = parseInt(step.dataset.delay) || 1000;
+    const subDelay = parseInt(step.dataset.subDelay) || 0;
+    const type = step.dataset.type || '';
+    totalDelay += delay;
+
+    // Show step
+    setTimeout(() => {
+      step.classList.add('visible');
+      const dot = step.querySelector('.dot');
+      dot.classList.add('active');
+
+      // Grow rail
+      const stepBottom = step.offsetTop + step.offsetHeight;
+      rail.style.transition = 'height 0.4s ease-out';
+      rail.style.height = stepBottom + 'px';
+    }, totalDelay);
+
+    // Show sub-result and mark done
+    if (subDelay > 0) {
+      setTimeout(() => {
+        const dot = step.querySelector('.dot');
+        const sub = step.querySelector('.sub');
+        if (sub) sub.classList.add('visible');
+        dot.classList.remove('active');
+        dot.classList.add(type === 'action' ? 'action' : 'done');
+      }, totalDelay + subDelay);
+    } else if (type === 'decision') {
+      // Decision: highlight chosen path after a pause
+      setTimeout(() => {
+        const dot = step.querySelector('.dot');
+        dot.classList.remove('active');
+        dot.classList.add('decision');
+        const chosen = step.querySelector('.chosen-target');
+        if (chosen) {
+          chosen.classList.add('chosen');
+          chosen.querySelector('.reason').textContent = ' \u2190 3 correlated critical alerts, active cascade';
+        }
+      }, totalDelay + 900);
+    } else if (type === 'escalation') {
+      setTimeout(() => {
+        const dot = step.querySelector('.dot');
+        dot.classList.remove('active');
+        dot.classList.add('action');
+      }, totalDelay + 400);
+    } else {
+      // First step (alert) — just mark done quickly
+      setTimeout(() => {
+        const dot = step.querySelector('.dot');
+        dot.classList.remove('active');
+        dot.classList.add('done');
+      }, totalDelay + 500);
+    }
+  });
+
+  // Show end text
+  setTimeout(() => { end.style.transition = 'opacity 0.5s'; end.style.opacity = '1'; }, totalDelay + 1200);
+
+  // Restart after hold
+  setTimeout(animate, totalDelay + 5000);
+}
+
+animate();
+</script>
+</body>
+</html>
