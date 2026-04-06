@@ -119,6 +119,18 @@ ai& operates next-generation data centers for AI infrastructure. This PoC demons
 
 This is the kind of internal tooling the Applied AI Engineer role would build — AI that makes every ops team member more effective, regardless of their experience level.
 
+## Development process
+
+This project was scaffolded with AI assistance and then hardened through manual engineering review:
+
+- **Architecture**: Model-agnostic LLM client with zero SDK dependencies, async-first design, single-container deployment
+- **Bug hardening**: Identified and fixed 10 bugs through code review — timestamp format mismatches, event-loop blocking, connection lifecycle, data consistency, and state management issues
+- **Test coverage**: 62 unit tests covering parsers, Pydantic models, scenario structure validation, RAG chunking, and LLM client utilities
+- **Evaluation**: Systematic accuracy framework for triage agent across all 5 scenario types (see [EVALUATION.md](./EVALUATION.md))
+- **Real integration**: HMAC-signed outgoing webhook on escalation events
+
+Using AI as a force multiplier for rapid prototyping — then applying engineering judgment to harden the result — is the workflow this role calls for.
+
 ## Tech stack
 
 | Component | Technology |
