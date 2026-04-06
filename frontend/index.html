@@ -1,535 +1,579 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ops Triage Agent — Data Center Incident Triage</title>
+    <title>Ops Triage Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        surface: { DEFAULT: '#111827', light: '#1f2937', lighter: '#374151' },
-                        accent: { blue: '#3b82f6', amber: '#f59e0b', red: '#ef4444', green: '#22c55e' }
-                    },
-                    fontFamily: {
-                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                        bg: { DEFAULT: '#101014', panel: '#18181b', card: '#1e1e22', hover: '#27272a' },
+                        border: '#2e2e33',
+                        fg: { DEFAULT: '#e4e4e7', muted: '#a1a1aa', dim: '#71717a', faint: '#52525b' },
+                        blue: { soft: '#2563eb', muted: '#1d4ed8' },
+                        amber: { soft: '#d97706' },
+                        red: { soft: '#dc2626' },
+                        green: { soft: '#16a34a' },
                     }
                 }
             }
         }
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
-        body { font-family: 'JetBrains Mono', monospace; background: #0b0f19; }
-        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
-        .scrollbar-thin::-webkit-scrollbar-track { background: #1f2937; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .animate-slide-in { animation: slideIn 0.3s ease-out; }
-        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
-        .severity-critical { border-left: 3px solid #ef4444; }
-        .severity-warning { border-left: 3px solid #f59e0b; }
-        .severity-info { border-left: 3px solid #3b82f6; }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #101014; color: #e4e4e7; }
+        .mono { font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; }
+        .scrollbar-thin::-webkit-scrollbar { width: 5px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #52525b; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        .severity-critical { border-left: 3px solid #dc2626; }
+        .severity-warning { border-left: 3px solid #d97706; }
+        .severity-info { border-left: 3px solid #2563eb; }
+        details summary { list-style: none; }
+        details summary::-webkit-details-marker { display: none; }
     </style>
 </head>
-<body class="text-gray-200 min-h-screen flex flex-col">
-    <header class="bg-surface border-b border-gray-700/50 px-6 py-3 flex items-center justify-between flex-shrink-0">
+<body class="min-h-screen flex flex-col">
+
+    <header class="bg-bg border-b border-border px-5 py-2.5 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3">
-            <h1 class="text-lg font-semibold text-white tracking-tight">Ops Triage Agent</h1>
-            <span class="text-xs text-gray-500">Data Center Incident Triage</span>
+            <span class="text-[15px] font-semibold text-white tracking-tight">Ops Triage Agent</span>
+            <span class="text-xs text-fg-dim font-normal">dc-tokyo-01</span>
         </div>
-        <div class="flex items-center gap-4">
-            <span class="px-2 py-1 bg-surface-lighter rounded text-xs text-gray-400">dc-tokyo-01</span>
+        <div class="flex items-center gap-3">
             <div id="connection-status" class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-gray-500 pulse-dot" id="status-dot"></span>
-                <span class="text-xs text-gray-500" id="status-text">connecting...</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-fg-faint" id="status-dot"></span>
+                <span class="text-[11px] text-fg-faint" id="status-text">connecting</span>
             </div>
         </div>
     </header>
 
     <main class="flex-1 flex overflow-hidden">
-        <section class="w-80 flex-shrink-0 border-r border-gray-700/50 flex flex-col bg-surface">
-            <div class="px-4 py-3 border-b border-gray-700/50">
-                <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Live Feed</h2>
-            </div>
-            <div id="alert-feed" class="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1.5">
-                <div class="text-center text-gray-600 text-xs py-8">Waiting for alerts...</div>
-            </div>
-            <div class="px-4 py-2 border-t border-gray-700/50 bg-surface-light">
-                <div class="grid grid-cols-3 gap-2 text-center">
-                    <div>
-                        <div class="text-lg font-semibold text-white" id="stat-alerts">0</div>
-                        <div class="text-[10px] text-gray-500 uppercase">Alerts</div>
-                    </div>
-                    <div>
-                        <div class="text-lg font-semibold text-white" id="stat-incidents">0</div>
-                        <div class="text-[10px] text-gray-500 uppercase">Incidents</div>
-                    </div>
-                    <div>
-                        <div class="text-lg font-semibold text-accent-red" id="stat-p1">0</div>
-                        <div class="text-[10px] text-gray-500 uppercase">P1 Open</div>
-                    </div>
+
+        <section class="w-80 flex-shrink-0 border-r border-border flex flex-col bg-bg">
+            <div class="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                <span class="text-[13px] font-medium text-fg-muted">Live alerts</span>
+                <div class="flex items-center gap-3 text-[11px] text-fg-dim">
+                    <span id="stat-alerts">0</span>
+                    <span class="text-fg-faint">/</span>
+                    <span id="stat-incidents">0</span> inc
+                    <span id="stat-p1" class="text-red-soft font-medium hidden"></span>
                 </div>
+            </div>
+            <div id="alert-feed" class="flex-1 overflow-y-auto scrollbar-thin p-1.5 space-y-px">
+                <div class="text-center text-fg-faint text-xs py-12">Waiting for alerts...</div>
             </div>
         </section>
 
-        <section class="flex-1 flex flex-col bg-[#0d1117] min-w-0">
-            <div class="px-6 py-3 border-b border-gray-700/50">
-                <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Triage Detail</h2>
+        <section class="flex-1 flex flex-col bg-bg min-w-0">
+            <div class="px-5 py-2.5 border-b border-border">
+                <span class="text-[13px] font-medium text-fg-muted">Triage detail</span>
             </div>
-            <div id="triage-detail" class="flex-1 overflow-y-auto scrollbar-thin p-6">
+            <div id="triage-detail" class="flex-1 overflow-y-auto scrollbar-thin p-5">
                 <div class="flex items-center justify-center h-full">
-                    <div class="text-center text-gray-600">
-                        <svg class="mx-auto mb-3 w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-                        <p class="text-sm">Select an alert to view triage details</p>
-                    </div>
+                    <p class="text-sm text-fg-faint">Select an alert from the feed</p>
                 </div>
             </div>
         </section>
 
-        <section class="w-96 flex-shrink-0 border-l border-gray-700/50 flex flex-col bg-surface">
-            <div class="px-4 py-3 border-b border-gray-700/50">
-                <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Knowledge Base</h2>
+        <section class="w-[360px] flex-shrink-0 border-l border-border flex flex-col bg-bg">
+            <div class="px-4 py-2.5 border-b border-border">
+                <span class="text-[13px] font-medium text-fg-muted">Knowledge base</span>
             </div>
-            <div id="qa-thread" class="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
-                <div class="text-center text-gray-600 text-xs py-8">Ask a question about DC operations...</div>
+            <div id="qa-thread" class="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
+                <div class="text-center text-fg-faint text-xs py-12">Ask questions about DC operations, runbooks, and procedures</div>
             </div>
-            <div class="p-4 border-t border-gray-700/50 bg-surface-light">
+            <div class="p-3 border-t border-border">
                 <form id="qa-form" class="flex gap-2">
-                    <input
-                        type="text"
-                        id="qa-input"
-                        placeholder="Ask about runbooks..."
-                        class="flex-1 bg-surface border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent-blue"
-                    >
-                    <button
-                        type="submit"
-                        class="px-4 py-2 bg-accent-blue hover:bg-blue-600 text-white text-sm rounded transition-colors"
-                        id="qa-submit"
-                    >Ask</button>
+                    <input type="text" id="qa-input" placeholder="Search runbooks..."
+                        class="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:border-blue-soft/60">
+                    <button type="submit" id="qa-submit"
+                        class="px-3 py-2 bg-blue-soft hover:bg-blue-muted text-white text-sm rounded-md transition-colors">Ask</button>
                 </form>
             </div>
         </section>
     </main>
 
-    <footer class="bg-surface border-t border-gray-700/50 px-6 py-2 flex items-center justify-between text-xs text-gray-500 flex-shrink-0">
-        <div class="flex items-center gap-4">
-            <span>Model: <span id="footer-model" class="text-gray-400">loading...</span></span>
-            <span>Alerts/hr: <span id="footer-rate" class="text-gray-400">0</span></span>
-        </div>
-        <div class="flex items-center gap-4">
-            <span>Uptime: <span id="footer-uptime" class="text-gray-400">00:00:00</span></span>
-            <span class="text-gray-600">Ops Triage Agent v1.0</span>
-        </div>
+    <footer class="bg-bg border-t border-border px-5 py-1.5 flex items-center justify-between text-[11px] text-fg-faint flex-shrink-0">
+        <span>Model: <span id="footer-model" class="text-fg-dim">—</span></span>
+        <span>Uptime <span id="footer-uptime" class="text-fg-dim">00:00:00</span></span>
     </footer>
 
-    <script>
-    const state = {
-        alerts: [],
-        selectedAlertId: null,
-        triageSource: null,
-        connected: false,
+<script>
+const state = {
+    alerts: [],
+    selectedAlertId: null,
+    triageSource: null,
+    connected: false,
+    triageCache: {},
+};
+
+const $ = (id) => document.getElementById(id);
+const alertFeed = $('alert-feed');
+const triageDetail = $('triage-detail');
+const qaThread = $('qa-thread');
+const qaForm = $('qa-form');
+const qaInput = $('qa-input');
+
+const sevColor = { critical: '#dc2626', warning: '#d97706', info: '#2563eb' };
+const clsStyle = {
+    noise: 'bg-zinc-700/40 text-zinc-400',
+    acknowledged: 'bg-blue-900/30 text-blue-400',
+    incident: 'bg-amber-900/30 text-amber-400',
+    critical_escalation: 'bg-red-900/30 text-red-400',
+};
+
+function connectAlertStream() {
+    const source = new EventSource('/api/stream/alerts');
+    source.onopen = () => {
+        state.connected = true;
+        $('status-dot').className = 'w-1.5 h-1.5 rounded-full bg-green-soft';
+        $('status-text').textContent = 'live';
+        $('status-text').className = 'text-[11px] text-green-soft';
     };
-
-    const $ = (id) => document.getElementById(id);
-    const alertFeed = $('alert-feed');
-    const triageDetail = $('triage-detail');
-    const qaThread = $('qa-thread');
-    const qaForm = $('qa-form');
-    const qaInput = $('qa-input');
-
-    const severityColor = { critical: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
-    const severityIcon = { critical: '\u25cf', warning: '\u25d0', info: '\u25cb' };
-    const classificationColors = {
-        noise: 'text-gray-400',
-        acknowledged: 'text-accent-blue',
-        incident: 'text-accent-amber',
-        critical_escalation: 'text-accent-red',
+    source.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'new_alert') addAlert(data.alert);
+            else if (data.type === 'triage_update') updateAlertTriageStatus(data.alert_id, data.step);
+        } catch (e) { console.error('SSE parse error:', e); }
     };
+    source.onerror = () => {
+        state.connected = false;
+        $('status-dot').className = 'w-1.5 h-1.5 rounded-full bg-red-soft';
+        $('status-text').textContent = 'disconnected';
+        $('status-text').className = 'text-[11px] text-red-soft';
+        source.close();
+        setTimeout(connectAlertStream, 3000);
+    };
+}
 
-    function connectAlertStream() {
-        const source = new EventSource('/api/stream/alerts');
+function addAlert(alert) {
+    state.alerts.unshift(alert);
+    if (state.alerts.length > 200) state.alerts.pop();
 
-        source.onopen = () => {
-            state.connected = true;
-            $('status-dot').className = 'w-2 h-2 rounded-full bg-accent-green pulse-dot';
-            $('status-text').textContent = 'connected';
-            $('status-text').className = 'text-xs text-accent-green';
-        };
+    const el = document.createElement('div');
+    el.className = `severity-${alert.severity} bg-card hover:bg-hover rounded-md px-3 py-2 cursor-pointer transition-colors fade-in`;
+    el.dataset.alertId = alert.id;
+    el.onclick = () => selectAlert(alert.id);
 
-        source.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'new_alert') {
-                    addAlert(data.alert);
-                } else if (data.type === 'triage_update') {
-                    updateAlertTriageStatus(data.alert_id, data.step);
-                }
-            } catch (e) {
-                console.error('Failed to parse SSE event:', e);
-            }
-        };
+    const time = new Date(alert.timestamp + 'Z').toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        source.onerror = () => {
-            state.connected = false;
-            $('status-dot').className = 'w-2 h-2 rounded-full bg-accent-red pulse-dot';
-            $('status-text').textContent = 'disconnected';
-            $('status-text').className = 'text-xs text-accent-red';
-            source.close();
-            setTimeout(connectAlertStream, 3000);
-        };
-    }
-
-    function addAlert(alert) {
-        state.alerts.unshift(alert);
-        if (state.alerts.length > 200) state.alerts.pop();
-
-        const el = document.createElement('div');
-        el.className = `severity-${alert.severity} bg-surface-light hover:bg-surface-lighter rounded px-3 py-2 cursor-pointer transition-colors animate-slide-in`;
-        el.dataset.alertId = alert.id;
-        el.onclick = () => selectAlert(alert.id);
-
-        const time = new Date(alert.timestamp).toLocaleTimeString('en-US', { hour12: false });
-
-        el.innerHTML = `
-            <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] text-gray-500">${time}</span>
-                <span class="text-[10px] px-1.5 py-0.5 rounded" style="background: ${severityColor[alert.severity]}22; color: ${severityColor[alert.severity]}">${alert.severity}</span>
+    el.innerHTML = `
+        <div class="flex items-center justify-between mb-0.5">
+            <span class="text-[11px] text-fg-faint mono">${time}</span>
+            <div class="flex items-center gap-1.5">
+                <span class="triage-badge text-[10px]" data-alert-id="${alert.id}"></span>
+                <span class="text-[10px] font-medium px-1.5 py-px rounded" style="color: ${sevColor[alert.severity]}">${alert.severity}</span>
             </div>
-            <div class="text-xs text-gray-300 truncate">${escapeHtml(alert.message)}</div>
-            <div class="flex items-center gap-2 mt-1">
-                <span class="text-[10px] text-gray-500">${alert.category}</span>
-                <span class="text-[10px] text-gray-600">${alert.rack}</span>
-                <span class="text-[10px] text-gray-600 ml-auto triage-badge" data-alert-id="${alert.id}"></span>
-            </div>
-        `;
+        </div>
+        <div class="text-[13px] text-fg leading-snug truncate">${esc(alert.message)}</div>
+        <div class="text-[11px] text-fg-faint mt-0.5">${alert.category} &middot; ${alert.rack}</div>
+    `;
 
-        // Remove placeholder
-        if (state.alerts.length === 1) alertFeed.innerHTML = '';
-        alertFeed.prepend(el);
+    if (state.alerts.length === 1) alertFeed.innerHTML = '';
+    alertFeed.prepend(el);
+    updateStats();
+}
 
-        updateStats();
+function ensureCache(alertId) {
+    if (!state.triageCache[alertId]) state.triageCache[alertId] = { steps: [], complete: false };
+    return state.triageCache[alertId];
+}
+
+function updateAlertTriageStatus(alertId, step) {
+    const cache = ensureCache(alertId);
+    cache.steps.push(step);
+
+    const badge = alertFeed.querySelector(`.triage-badge[data-alert-id="${alertId}"]`);
+
+    if (step.type === 'final_triage' && step.triage_result) {
+        cache.complete = true;
+        const cls = step.triage_result.classification;
+        if (badge) badge.innerHTML = `<span class="px-1.5 py-px rounded ${clsStyle[cls] || ''}">${cls.replace('_', ' ')}</span>`;
+    } else if (step.type === 'tool_call') {
+        if (badge && !cache.complete) badge.innerHTML = '<span class="text-blue-400">triaging</span>';
     }
 
-    function updateAlertTriageStatus(alertId, step) {
-        const badge = alertFeed.querySelector(`.triage-badge[data-alert-id="${alertId}"]`);
-        if (!badge) return;
-
-        if (step.type === 'final_triage' && step.triage_result) {
-            const cls = step.triage_result.classification;
-            badge.innerHTML = `<span class="${classificationColors[cls] || 'text-gray-400'}">${cls}</span>`;
-        } else if (step.type === 'tool_call') {
-            badge.innerHTML = '<span class="text-accent-blue">triaging...</span>';
-        }
-
-        // Auto-update triage detail if this alert is selected
-        if (state.selectedAlertId === alertId) {
-            appendTriageStep(step);
-        }
+    if (state.selectedAlertId === alertId) {
+        renderTriageStep(step);
     }
+}
 
-    function selectAlert(alertId) {
-        state.selectedAlertId = alertId;
-        const alert = state.alerts.find(a => a.id === alertId);
-        if (!alert) return;
+function selectAlert(alertId) {
+    state.selectedAlertId = alertId;
+    const alert = state.alerts.find(a => a.id === alertId);
+    if (!alert) return;
 
-        // Highlight selected
-        alertFeed.querySelectorAll('[data-alert-id]').forEach(el => {
-            el.classList.toggle('ring-1', el.dataset.alertId === alertId);
-            el.classList.toggle('ring-accent-blue', el.dataset.alertId === alertId);
-        });
-
-        // Render alert header
-        triageDetail.innerHTML = `
-            <div class="mb-6">
-                <div class="flex items-center gap-3 mb-3">
-                    <span class="px-2 py-1 rounded text-xs font-medium" style="background: ${severityColor[alert.severity]}22; color: ${severityColor[alert.severity]}">${alert.severity.toUpperCase()}</span>
-                    <span class="px-2 py-1 bg-surface-lighter rounded text-xs text-gray-400">${alert.category}</span>
-                    <span class="text-xs text-gray-500">${alert.rack} / ${alert.host}</span>
-                </div>
-                <h3 class="text-base text-white mb-2">${escapeHtml(alert.message)}</h3>
-                <div class="grid grid-cols-2 gap-4 text-xs">
-                    <div><span class="text-gray-500">Component:</span> <span class="text-gray-300">${alert.component}</span></div>
-                    <div><span class="text-gray-500">Metric:</span> <span class="text-gray-300">${alert.metric_name}</span></div>
-                    <div><span class="text-gray-500">Value:</span> <span class="text-gray-300">${alert.metric_value}</span></div>
-                    <div><span class="text-gray-500">Threshold:</span> <span class="text-gray-300">${alert.threshold}</span></div>
-                </div>
-            </div>
-            <div class="border-t border-gray-700/50 pt-4">
-                <h4 class="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wider">Agent Reasoning</h4>
-                <div id="triage-steps" class="space-y-3">
-                    <div class="text-xs text-gray-600 flex items-center gap-2">
-                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                        Waiting for agent steps...
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // Close existing triage stream
-        if (state.triageSource) {
-            state.triageSource.close();
-            state.triageSource = null;
-        }
-
-        // Connect to triage stream for this alert
-        const source = new EventSource(`/api/stream/triage/${alertId}`);
-        state.triageSource = source;
-        let stepsReceived = 0;
-
-        source.onmessage = (event) => {
-            try {
-                const step = JSON.parse(event.data);
-                stepsReceived++;
-                if (stepsReceived === 1) {
-                    $('triage-steps').innerHTML = '';
-                }
-                appendTriageStep(step);
-                if (step.type === 'final_triage') source.close();
-            } catch (e) {
-                console.error('Failed to parse triage step:', e);
-            }
-        };
-
-        source.onerror = () => {
-            source.close();
-            if (stepsReceived === 0) {
-                // Fallback: fetch via REST
-                fetchTriageHistory(alertId);
-            }
-        };
-    }
-
-    async function fetchTriageHistory(alertId) {
-        try {
-            const res = await fetch(`/api/alerts/${alertId}`);
-            const data = await res.json();
-            if (data.triage_steps && data.triage_steps.length > 0) {
-                $('triage-steps').innerHTML = '';
-                data.triage_steps.forEach(step => appendTriageStep(step));
-            }
-        } catch (e) {
-            console.error('Failed to fetch triage history:', e);
-        }
-    }
-
-    function appendTriageStep(step) {
-        const container = $('triage-steps');
-        if (!container) return;
-
-        const el = document.createElement('div');
-        el.className = 'animate-slide-in';
-
-        if (step.type === 'tool_call') {
-            const toolIcons = {
-                query_recent_alerts: '\ud83d\udd0d',
-                search_runbooks: '\ud83d\udcda',
-                get_host_info: '\ud83d\udda5\ufe0f',
-                create_incident: '\ud83d\udcdd',
-                escalate: '\ud83d\udea8',
-            };
-            const icon = toolIcons[step.tool_name] || '\ud83d\udd27';
-            el.innerHTML = `
-                <div class="bg-surface rounded p-3 border border-gray-700/50">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-sm">${icon}</span>
-                        <span class="text-xs font-medium text-accent-blue">${step.tool_name}</span>
-                        <span class="text-[10px] text-gray-600">step ${step.step}</span>
-                    </div>
-                    <div class="text-[11px] text-gray-500 mt-1">${formatToolInput(step.tool_input)}</div>
-                </div>
-            `;
-        } else if (step.type === 'tool_result') {
-            el.innerHTML = `
-                <div class="ml-4 mb-2">
-                    <details class="group">
-                        <summary class="text-[11px] text-gray-500 cursor-pointer hover:text-gray-400 flex items-center gap-1">
-                            <svg class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                            Result from ${step.tool_name || 'tool'}
-                        </summary>
-                        <pre class="mt-1 text-[10px] text-gray-600 bg-surface-light rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">${escapeHtml(formatToolOutput(step.tool_output))}</pre>
-                    </details>
-                </div>
-            `;
-        } else if (step.type === 'final_triage' && step.triage_result) {
-            const r = step.triage_result;
-            const clsColor = classificationColors[r.classification] || 'text-gray-300';
-            el.innerHTML = `
-                <div class="mt-4 border-t border-gray-700/50 pt-4">
-                    <h4 class="text-sm font-medium text-white mb-3">Triage Result</h4>
-                    <div class="space-y-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-500 w-24">Classification:</span>
-                            <span class="text-sm font-semibold ${clsColor}">${r.classification}</span>
-                        </div>
-                        <div>
-                            <span class="text-xs text-gray-500">Root Cause:</span>
-                            <p class="text-xs text-gray-300 mt-1">${escapeHtml(r.root_cause_hypothesis)}</p>
-                        </div>
-                        ${r.remediation_steps && r.remediation_steps.length ? `
-                        <div>
-                            <span class="text-xs text-gray-500">Remediation:</span>
-                            <ul class="mt-1 space-y-1">
-                                ${r.remediation_steps.map(s => `<li class="text-xs text-gray-400 flex gap-2"><span class="text-gray-600">-</span> ${escapeHtml(s)}</li>`).join('')}
-                            </ul>
-                        </div>` : ''}
-                        ${r.correlated_alert_ids && r.correlated_alert_ids.length ? `
-                        <div>
-                            <span class="text-xs text-gray-500">Correlated Alerts:</span>
-                            <div class="flex flex-wrap gap-1 mt-1">
-                                ${r.correlated_alert_ids.map(id => `<span class="text-[10px] bg-surface-lighter px-2 py-0.5 rounded text-gray-400">${id.slice(0, 8)}...</span>`).join('')}
-                            </div>
-                        </div>` : ''}
-                        ${r.escalation_required ? `
-                        <div class="bg-red-900/20 border border-red-800/50 rounded p-3 mt-2">
-                            <div class="flex items-center gap-2 text-accent-red text-xs font-medium mb-1">
-                                <span>\ud83d\udea8</span> Escalation Required
-                            </div>
-                            <p class="text-xs text-red-300">${escapeHtml(r.escalation_reason || 'Critical issue requires immediate attention')}</p>
-                        </div>` : ''}
-                        <div class="mt-3">
-                            <span class="text-xs text-gray-500">Summary:</span>
-                            <p class="text-xs text-gray-300 mt-1">${escapeHtml(r.summary)}</p>
-                        </div>
-                        <div class="bg-surface-light rounded p-3 mt-2">
-                            <span class="text-xs text-gray-500">\u65e5\u672c\u8a9e\u30b5\u30de\u30ea\u30fc:</span>
-                            <p class="text-xs text-gray-300 mt-1">${escapeHtml(r.summary_ja)}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        container.appendChild(el);
-        container.scrollTop = container.scrollHeight;
-    }
-
-    let qaFirstQuery = true;
-
-    qaForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const query = qaInput.value.trim();
-        if (!query) return;
-
-        if (qaFirstQuery) {
-            qaThread.innerHTML = '';
-            qaFirstQuery = false;
-        }
-
-        // Show user question
-        const qEl = document.createElement('div');
-        qEl.className = 'animate-slide-in';
-        qEl.innerHTML = `<div class="bg-accent-blue/10 border border-accent-blue/20 rounded p-3 text-xs text-gray-300">${escapeHtml(query)}</div>`;
-        qaThread.appendChild(qEl);
-
-        qaInput.value = '';
-        $('qa-submit').disabled = true;
-        $('qa-submit').textContent = '...';
-
-        // Show loading
-        const loadEl = document.createElement('div');
-        loadEl.className = 'flex items-center gap-2 text-xs text-gray-600';
-        loadEl.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Searching runbooks...';
-        qaThread.appendChild(loadEl);
-        qaThread.scrollTop = qaThread.scrollHeight;
-
-        try {
-            const res = await fetch('/api/knowledge/ask', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query }),
-            });
-            const data = await res.json();
-
-            loadEl.remove();
-
-            const aEl = document.createElement('div');
-            aEl.className = 'animate-slide-in';
-            aEl.innerHTML = `
-                <div class="bg-surface-light rounded p-3 space-y-2">
-                    <div class="text-xs text-gray-300 whitespace-pre-wrap">${escapeHtml(data.answer)}</div>
-                    ${data.sources && data.sources.length ? `
-                    <div class="border-t border-gray-700/50 pt-2 mt-2">
-                        <span class="text-[10px] text-gray-500 uppercase">Sources:</span>
-                        <div class="flex flex-wrap gap-1 mt-1">
-                            ${data.sources.map(s => `<span class="text-[10px] bg-surface px-2 py-0.5 rounded text-gray-400">${s.source}</span>`).join('')}
-                        </div>
-                    </div>` : ''}
-                </div>
-            `;
-            qaThread.appendChild(aEl);
-        } catch (err) {
-            loadEl.remove();
-            const errEl = document.createElement('div');
-            errEl.className = 'text-xs text-accent-red';
-            errEl.textContent = 'Failed to get answer. Check LLM configuration.';
-            qaThread.appendChild(errEl);
-        }
-
-        $('qa-submit').disabled = false;
-        $('qa-submit').textContent = 'Ask';
-        qaThread.scrollTop = qaThread.scrollHeight;
+    alertFeed.querySelectorAll('[data-alert-id]').forEach(el => {
+        const match = el.dataset.alertId === alertId;
+        el.classList.toggle('ring-1', match);
+        el.classList.toggle('ring-blue-soft/50', match);
     });
 
-    async function updateStats() {
+    triageDetail.innerHTML = `
+        <div class="mb-5">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: ${sevColor[alert.severity]}18; color: ${sevColor[alert.severity]}">${alert.severity}</span>
+                <span class="text-xs text-fg-dim">${alert.category}</span>
+                <span class="text-[11px] text-fg-faint">${alert.rack} / ${alert.host}</span>
+            </div>
+            <p class="text-[15px] text-fg leading-snug mb-3">${esc(alert.message)}</p>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
+                <div><span class="text-fg-faint">Component</span> <span class="text-fg-dim ml-2 mono">${alert.component}</span></div>
+                <div><span class="text-fg-faint">Metric</span> <span class="text-fg-dim ml-2 mono">${alert.metric_name}</span></div>
+                <div><span class="text-fg-faint">Value</span> <span class="text-fg-dim ml-2 mono">${alert.metric_value}</span></div>
+                <div><span class="text-fg-faint">Threshold</span> <span class="text-fg-dim ml-2 mono">${alert.threshold}</span></div>
+            </div>
+        </div>
+        <div id="triage-result"></div>
+        <details id="reasoning-details" open>
+            <summary class="text-[12px] font-medium text-fg-dim cursor-pointer hover:text-fg-muted py-2 border-t border-border mt-3 select-none">
+                Agent reasoning <span class="text-fg-faint font-normal ml-1" id="step-count"></span>
+            </summary>
+            <div id="triage-steps" class="space-y-1.5 pt-2">
+                <div class="text-xs text-fg-faint flex items-center gap-2 py-4">
+                    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    Waiting for agent...
+                </div>
+            </div>
+        </details>
+    `;
+
+    if (state.triageSource) { state.triageSource.close(); state.triageSource = null; }
+
+    const cache = state.triageCache[alertId];
+    if (cache && cache.complete) {
+        renderCachedTriage(cache.steps);
+        return;
+    }
+    if (cache && cache.steps.length > 0) {
+        $('triage-steps').innerHTML = '';
+        cache.steps.forEach(s => renderTriageStep(s));
+    }
+
+    const source = new EventSource(`/api/stream/triage/${alertId}`);
+    state.triageSource = source;
+    const maxCached = cache ? Math.max(0, ...cache.steps.map(s => s.step || 0)) : 0;
+    let stepsReceived = 0;
+
+    source.onmessage = (event) => {
         try {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            $('stat-alerts').textContent = data.total_alerts;
-            $('stat-incidents').textContent = data.total_incidents;
-            $('stat-p1').textContent = data.p1_open;
-            $('footer-rate').textContent = data.alerts_last_hour;
-            updateUptime(data.uptime_seconds);
-        } catch {}
+            const step = JSON.parse(event.data);
+            if (step.step && step.step <= maxCached) return; // skip duplicates
+            stepsReceived++;
+            if (stepsReceived === 1 && !cache?.steps.length) $('triage-steps').innerHTML = '';
+
+            const c = ensureCache(alertId);
+            c.steps.push(step);
+            renderTriageStep(step);
+
+            if (step.type === 'final_triage') { c.complete = true; source.close(); }
+        } catch (e) { console.error('Triage SSE parse error:', e); }
+    };
+    source.onerror = () => {
+        source.close();
+        if (stepsReceived === 0 && !cache?.steps.length) fetchTriageHistory(alertId);
+    };
+}
+
+function renderCachedTriage(steps) {
+    const final = steps.find(s => s.type === 'final_triage');
+    const reasoning = steps.filter(s => s.type !== 'final_triage');
+
+    if (final) renderTriageResult(final.triage_result);
+
+    const container = $('triage-steps');
+    if (!container) return;
+    container.innerHTML = '';
+    reasoning.forEach(s => renderTriageStep(s));
+    updateStepCount(steps.length);
+
+    const details = $('reasoning-details');
+    if (details && final) details.removeAttribute('open');
+}
+
+function renderTriageStep(step) {
+    const container = $('triage-steps');
+    if (!container) return;
+
+    const el = document.createElement('div');
+    el.className = 'fade-in';
+
+    if (step.type === 'tool_call') {
+        const desc = describeToolCall(step.tool_name, step.tool_input);
+        el.innerHTML = `
+            <div class="flex items-start gap-2 py-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-soft/60 mt-1.5 flex-shrink-0"></span>
+                <div class="min-w-0">
+                    <span class="text-[12px] text-fg-muted">${esc(desc)}</span>
+                    <details class="mt-0.5">
+                        <summary class="text-[10px] text-fg-faint cursor-pointer hover:text-fg-dim">params</summary>
+                        <pre class="mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto">${esc(JSON.stringify(step.tool_input, null, 2))}</pre>
+                    </details>
+                </div>
+            </div>
+        `;
+    } else if (step.type === 'tool_result') {
+        const summary = summarizeToolResult(step.tool_name, step.tool_output);
+        el.innerHTML = `
+            <div class="flex items-start gap-2 py-0.5 ml-3.5">
+                <span class="text-[11px] text-fg-dim">${esc(summary)}</span>
+                <details class="inline">
+                    <summary class="text-[10px] text-fg-faint cursor-pointer hover:text-fg-dim ml-1">[raw]</summary>
+                    <pre class="mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">${esc(formatOutput(step.tool_output))}</pre>
+                </details>
+            </div>
+        `;
+    } else if (step.type === 'final_triage' && step.triage_result) {
+        renderTriageResult(step.triage_result);
+        const details = $('reasoning-details');
+        if (details) details.removeAttribute('open');
+        return;
     }
 
-    async function loadConfig() {
-        try {
-            const res = await fetch('/api/config');
-            const data = await res.json();
-            $('footer-model').textContent = data.llm_model;
-        } catch {}
-    }
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+    updateStepCount();
+}
 
-    function updateUptime(seconds) {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        $('footer-uptime').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
+function renderTriageResult(r) {
+    const container = $('triage-result');
+    if (!container || !r) return;
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
+    const cls = r.classification || 'acknowledged';
+    const style = clsStyle[cls] || clsStyle.acknowledged;
 
-    function formatToolInput(input) {
-        if (!input) return '';
-        return Object.entries(input).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(', ');
-    }
+    container.innerHTML = `
+        <div class="bg-card border border-border rounded-lg p-4 fade-in">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-[11px] font-medium px-2 py-0.5 rounded ${style}">${cls.replace('_', ' ')}</span>
+                ${r.escalation_required ? '<span class="text-[11px] font-medium px-2 py-0.5 rounded bg-red-900/30 text-red-400">escalated</span>' : ''}
+            </div>
 
-    function formatToolOutput(output) {
-        if (!output) return '';
-        if (typeof output === 'string') {
-            try {
-                return JSON.stringify(JSON.parse(output), null, 2);
-            } catch {
-                return output;
-            }
+            <p class="text-[13px] text-fg leading-relaxed mb-3">${esc(r.summary)}</p>
+
+            <div class="space-y-2.5 text-[12px]">
+                <div>
+                    <span class="text-fg-faint">Root cause</span>
+                    <p class="text-fg-dim mt-0.5">${esc(r.root_cause_hypothesis)}</p>
+                </div>
+
+                ${r.remediation_steps?.length ? `
+                <div>
+                    <span class="text-fg-faint">Remediation</span>
+                    <ul class="mt-0.5 space-y-0.5">
+                        ${r.remediation_steps.map(s => `<li class="text-fg-dim flex gap-2"><span class="text-fg-faint select-none">-</span>${esc(s)}</li>`).join('')}
+                    </ul>
+                </div>` : ''}
+
+                ${r.correlated_alert_ids?.length ? `
+                <div>
+                    <span class="text-fg-faint">Correlated alerts</span>
+                    <div class="flex flex-wrap gap-1 mt-0.5">
+                        ${r.correlated_alert_ids.map(id => `<span class="text-[10px] mono bg-hover px-1.5 py-0.5 rounded text-fg-dim">${id.slice(0, 8)}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                ${r.escalation_required ? `
+                <div class="bg-red-950/30 border border-red-900/30 rounded p-2.5 mt-1">
+                    <span class="text-[11px] text-red-400 font-medium">Escalation: </span>
+                    <span class="text-[11px] text-red-300">${esc(r.escalation_reason || 'Immediate attention required')}</span>
+                </div>` : ''}
+
+                <div class="pt-2 border-t border-border">
+                    <p class="text-[12px] text-fg-faint">${esc(r.summary_ja)}</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function describeToolCall(name, input) {
+    if (!input) input = {};
+    switch (name) {
+        case 'query_recent_alerts': {
+            const parts = [];
+            if (input.rack) parts.push(input.rack);
+            if (input.host) parts.push(input.host);
+            if (input.category) parts.push(input.category);
+            const where = parts.length ? ` in ${parts.join(', ')}` : '';
+            return `Checking recent alerts${where}`;
         }
-        return JSON.stringify(output, null, 2);
+        case 'search_runbooks':
+            return `Searching runbooks: ${input.query || '—'}`;
+        case 'get_host_info':
+            return `Looking up ${input.host || 'host'}`;
+        case 'create_incident':
+            return `Creating incident: ${(input.title || '').slice(0, 60)}`;
+        case 'escalate':
+            return `Escalating (${input.urgency || 'standard'})`;
+        default:
+            return name;
+    }
+}
+
+function summarizeToolResult(name, output) {
+    try {
+        const d = typeof output === 'string' ? JSON.parse(output) : output;
+        switch (name) {
+            case 'query_recent_alerts':
+                if (d.count !== undefined) return `${d.count} alert${d.count !== 1 ? 's' : ''} found`;
+                break;
+            case 'search_runbooks':
+                if (d.results) return `${d.results.length} runbook section${d.results.length !== 1 ? 's' : ''}`;
+                if (d.message) return d.message;
+                break;
+            case 'get_host_info':
+                if (d.hostname) return `${d.hostname} — ${d.rack || '?'}, ${d.gpu_count || '?'}x ${(d.gpu_type || '?').split(' ').pop()}, ${d.status || '?'}`;
+                if (d.error) return d.error;
+                break;
+            case 'create_incident':
+                if (d.incident_id) return `Created ${d.incident_id}`;
+                break;
+            case 'escalate':
+                if (d.escalation_id) return `Sent via ${(d.notification_channels || []).join(', ')}`;
+                break;
+        }
+    } catch {}
+    return 'Done';
+}
+
+function updateStepCount(count) {
+    const el = $('step-count');
+    if (!el) return;
+    const c = count || $('triage-steps')?.children.length || 0;
+    el.textContent = c ? `(${c} steps)` : '';
+}
+
+async function fetchTriageHistory(alertId) {
+    try {
+        const res = await fetch(`/api/alerts/${alertId}`);
+        const data = await res.json();
+        if (data.triage_steps?.length > 0) {
+            const cache = ensureCache(alertId);
+            cache.steps = data.triage_steps;
+            cache.complete = data.triage_steps.some(s => s.type === 'final_triage');
+            renderCachedTriage(cache.steps);
+        }
+    } catch (e) { console.error('Failed to fetch triage history:', e); }
+}
+
+let qaFirstQuery = true;
+
+qaForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = qaInput.value.trim();
+    if (!query) return;
+
+    if (qaFirstQuery) { qaThread.innerHTML = ''; qaFirstQuery = false; }
+
+    const qEl = document.createElement('div');
+    qEl.className = 'fade-in';
+    qEl.innerHTML = `<div class="bg-blue-soft/10 border border-blue-soft/20 rounded-md p-3 text-[13px] text-fg">${esc(query)}</div>`;
+    qaThread.appendChild(qEl);
+
+    qaInput.value = '';
+    $('qa-submit').disabled = true;
+    $('qa-submit').textContent = '...';
+
+    const loadEl = document.createElement('div');
+    loadEl.className = 'flex items-center gap-2 text-xs text-fg-faint';
+    loadEl.innerHTML = '<svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Searching runbooks...';
+    qaThread.appendChild(loadEl);
+    qaThread.scrollTop = qaThread.scrollHeight;
+
+    try {
+        const res = await fetch('/api/knowledge/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+        });
+        const data = await res.json();
+        loadEl.remove();
+
+        const aEl = document.createElement('div');
+        aEl.className = 'fade-in';
+        aEl.innerHTML = `
+            <div class="bg-card rounded-md p-3 space-y-2">
+                <div class="text-[13px] text-fg leading-relaxed whitespace-pre-wrap">${esc(data.answer)}</div>
+                ${data.sources?.length ? `
+                <div class="border-t border-border pt-2">
+                    <div class="flex flex-wrap gap-1">
+                        ${data.sources.map(s => `<span class="text-[10px] mono bg-hover px-1.5 py-0.5 rounded text-fg-dim">${s.source}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+            </div>
+        `;
+        qaThread.appendChild(aEl);
+    } catch {
+        loadEl.remove();
+        const errEl = document.createElement('div');
+        errEl.className = 'text-xs text-red-soft';
+        errEl.textContent = 'Failed to get answer. Check LLM configuration.';
+        qaThread.appendChild(errEl);
     }
 
-    connectAlertStream();
-    loadConfig();
-    setInterval(updateStats, 5000);
-    updateStats();
-    </script>
+    $('qa-submit').disabled = false;
+    $('qa-submit').textContent = 'Ask';
+    qaThread.scrollTop = qaThread.scrollHeight;
+});
+
+async function updateStats() {
+    try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        $('stat-alerts').textContent = data.total_alerts;
+        $('stat-incidents').textContent = data.total_incidents;
+        const p1El = $('stat-p1');
+        if (data.p1_open > 0) {
+            p1El.textContent = `${data.p1_open} P1`;
+            p1El.classList.remove('hidden');
+        } else {
+            p1El.classList.add('hidden');
+        }
+        updateUptime(data.uptime_seconds);
+    } catch {}
+}
+
+async function loadConfig() {
+    try {
+        const res = await fetch('/api/config');
+        const data = await res.json();
+        $('footer-model').textContent = data.llm_model;
+    } catch {}
+}
+
+function updateUptime(s) {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+    $('footer-uptime').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function formatOutput(output) {
+    if (!output) return '';
+    if (typeof output === 'string') {
+        try { return JSON.stringify(JSON.parse(output), null, 2); } catch { return output; }
+    }
+    return JSON.stringify(output, null, 2);
+}
+
+connectAlertStream();
+loadConfig();
+setInterval(updateStats, 5000);
+updateStats();
+</script>
 </body>
 </html>
