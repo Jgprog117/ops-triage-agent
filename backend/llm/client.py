@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -38,10 +39,20 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.2,
+        _max_retries: int = 5,
     ) -> dict[str, Any]:
-        if self.provider == "anthropic":
-            return await self._anthropic_completion(messages, tools, temperature)
-        return await self._openai_completion(messages, tools, temperature)
+        for attempt in range(_max_retries):
+            try:
+                if self.provider == "anthropic":
+                    return await self._anthropic_completion(messages, tools, temperature)
+                return await self._openai_completion(messages, tools, temperature)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 429 or attempt == _max_retries - 1:
+                    raise
+                retry_after = float(e.response.headers.get("retry-after", 2 ** attempt))
+                logger.warning("Rate limited, retrying in %.1fs (attempt %d/%d)", retry_after, attempt + 1, _max_retries)
+                await asyncio.sleep(retry_after)
+        raise RuntimeError("unreachable")
 
     # -- OpenAI-compatible path (unchanged) ------------------------------------
 

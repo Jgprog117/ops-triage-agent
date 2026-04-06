@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 MAX_STEPS = 8
 
 # Concurrency limiter — prevent overwhelming the LLM API
-_semaphore = asyncio.Semaphore(3)
+_semaphore = asyncio.Semaphore(2)
 
 
 def _build_user_message(alert: dict) -> str:
