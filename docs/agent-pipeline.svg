@@ -1,79 +1,98 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" font-family="system-ui,-apple-system,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 540" font-family="system-ui,-apple-system,sans-serif">
 <style>
-  @keyframes show1 { 0%,2%{opacity:0} 4%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes show2 { 0%,10%{opacity:0} 14%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes show3 { 0%,22%{opacity:0} 26%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes show4 { 0%,34%{opacity:0} 38%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes show5 { 0%,46%{opacity:0} 50%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes show6 { 0%,58%{opacity:0} 62%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes sub2 { 0%,18%{opacity:0} 22%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes sub3 { 0%,30%{opacity:0} 34%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes sub4 { 0%,42%{opacity:0} 46%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes sub5 { 0%,54%{opacity:0} 58%,90%{opacity:1} 94%,100%{opacity:0} }
-  @keyframes dot1 { 0%,2%{fill:#101014;stroke:#3f3f46} 4%,8%{fill:#2563eb;stroke:#2563eb} 10%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes dot2 { 0%,10%{fill:#101014;stroke:#3f3f46} 14%,18%{fill:#2563eb;stroke:#2563eb} 22%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes dot3 { 0%,22%{fill:#101014;stroke:#3f3f46} 26%,30%{fill:#2563eb;stroke:#2563eb} 34%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes dot4 { 0%,34%{fill:#101014;stroke:#3f3f46} 38%,42%{fill:#2563eb;stroke:#2563eb} 46%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes dot5 { 0%,46%{fill:#101014;stroke:#3f3f46} 48%,54%{fill:#2563eb;stroke:#2563eb} 58%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes dot6 { 0%,58%{fill:#101014;stroke:#3f3f46} 62%,90%{fill:#dc2626;stroke:#dc2626} 94%,100%{fill:#101014;stroke:#3f3f46} }
-  @keyframes rail { 0%,2%{stroke-dashoffset:370} 60%,90%{stroke-dashoffset:0} 94%,100%{stroke-dashoffset:370} }
-  .s1{animation:show1 13s infinite}.s2{animation:show2 13s infinite}.s3{animation:show3 13s infinite}
-  .s4{animation:show4 13s infinite}.s5{animation:show5 13s infinite}.s6{animation:show6 13s infinite}
-  .r2{animation:sub2 13s infinite}.r3{animation:sub3 13s infinite}.r4{animation:sub4 13s infinite}.r5{animation:sub5 13s infinite}
-  .d1{animation:dot1 13s infinite}.d2{animation:dot2 13s infinite}.d3{animation:dot3 13s infinite}
-  .d4{animation:dot4 13s infinite}.d5{animation:dot5 13s infinite}.d6{animation:dot6 13s infinite}
+  @keyframes show1 { 0%,2%{opacity:0} 4%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes show2 { 0%,8%{opacity:0} 11%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes show3 { 0%,18%{opacity:0} 21%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes show4 { 0%,28%{opacity:0} 31%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes showD { 0%,38%{opacity:0} 42%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes showDP { 0%,46%{opacity:0} 50%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes show5 { 0%,52%{opacity:0} 55%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes show6 { 0%,62%{opacity:0} 65%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes sub2 { 0%,15%{opacity:0} 18%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes sub3 { 0%,25%{opacity:0} 28%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes sub4 { 0%,35%{opacity:0} 38%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes sub5 { 0%,59%{opacity:0} 62%,88%{opacity:1} 92%,100%{opacity:0} }
+  @keyframes dot1 { 0%,2%{fill:#101014;stroke:#3f3f46} 4%,7%{fill:#2563eb;stroke:#2563eb} 10%,88%{fill:#22c55e;stroke:#22c55e} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dot2 { 0%,8%{fill:#101014;stroke:#3f3f46} 11%,15%{fill:#2563eb;stroke:#2563eb} 18%,88%{fill:#22c55e;stroke:#22c55e} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dot3 { 0%,18%{fill:#101014;stroke:#3f3f46} 21%,25%{fill:#2563eb;stroke:#2563eb} 28%,88%{fill:#22c55e;stroke:#22c55e} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dot4 { 0%,28%{fill:#101014;stroke:#3f3f46} 31%,35%{fill:#2563eb;stroke:#2563eb} 38%,88%{fill:#22c55e;stroke:#22c55e} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dotD { 0%,38%{fill:#101014;stroke:#3f3f46} 42%,48%{fill:#d97706;stroke:#d97706} 50%,88%{fill:#d97706;stroke:#d97706} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dot5 { 0%,52%{fill:#101014;stroke:#3f3f46} 55%,59%{fill:#2563eb;stroke:#2563eb} 62%,88%{fill:#dc2626;stroke:#dc2626} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes dot6 { 0%,62%{fill:#101014;stroke:#3f3f46} 65%,88%{fill:#dc2626;stroke:#dc2626} 92%,100%{fill:#101014;stroke:#3f3f46} }
+  @keyframes rail { 0%,2%{stroke-dashoffset:500} 65%,88%{stroke-dashoffset:0} 92%,100%{stroke-dashoffset:500} }
 </style>
 
-<rect width="520" height="420" fill="#101014" rx="8"/>
+<rect width="540" height="540" fill="#101014" rx="8"/>
 
 <!-- Rail -->
-<line x1="32" y1="25" x2="32" y2="395" stroke="#2e2e33" stroke-width="1" opacity="0.3"/>
-<line x1="32" y1="25" x2="32" y2="395" stroke="#2563eb" stroke-width="1.5" opacity="0.6" stroke-dasharray="370" stroke-dashoffset="370" style="animation:rail 13s infinite"/>
+<line x1="32" y1="25" x2="32" y2="510" stroke="#2e2e33" stroke-width="1" opacity="0.3"/>
+<line x1="32" y1="25" x2="32" y2="510" stroke="#2563eb" stroke-width="1.5" opacity="0.6" stroke-dasharray="500" stroke-dashoffset="500" style="animation:rail 15s infinite"/>
 
-<!-- Step 1 -->
-<circle cx="32" cy="30" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d1"/>
-<g class="s1" opacity="0">
-  <rect x="50" y="14" width="450" height="32" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
+<!-- Step 1: Alert -->
+<circle cx="32" cy="30" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot1 15s infinite"/>
+<g opacity="0" style="animation:show1 15s infinite">
+  <rect x="50" y="14" width="470" height="32" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
   <text x="62" y="28" fill="#e4e4e7" font-size="12" font-weight="500">Alert: GPU thermal throttling on node-gpu-rack12-01</text>
   <text x="62" y="40" fill="#71717a" font-size="10">warning / gpu / rack-12</text>
 </g>
 
-<!-- Step 2 -->
-<circle cx="32" cy="100" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d2"/>
-<g class="s2" opacity="0">
-  <rect x="50" y="82" width="450" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
-  <text x="62" y="99" fill="#e4e4e7" font-size="12" font-weight="500">Checking recent alerts in rack-12</text>
-  <text x="62" y="115" fill="#71717a" font-size="10" class="r2" opacity="0">Found 3 correlated alerts (thermal cascade)</text>
+<!-- Step 2: Query alerts -->
+<circle cx="32" cy="90" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot2 15s infinite"/>
+<g opacity="0" style="animation:show2 15s infinite">
+  <rect x="50" y="72" width="470" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
+  <text x="62" y="89" fill="#e4e4e7" font-size="12" font-weight="500">Checking recent alerts in rack-12</text>
+  <text x="62" y="105" fill="#71717a" font-size="10" opacity="0" style="animation:sub2 15s infinite">Found 3 correlated alerts (thermal cascade)</text>
 </g>
 
-<!-- Step 3 -->
-<circle cx="32" cy="172" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d3"/>
-<g class="s3" opacity="0">
-  <rect x="50" y="154" width="450" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
-  <text x="62" y="171" fill="#e4e4e7" font-size="12" font-weight="500">Searching runbooks: GPU thermal throttling</text>
-  <text x="62" y="187" fill="#71717a" font-size="10" class="r3" opacity="0">2 sections from gpu_thermal_throttling.md</text>
+<!-- Step 3: Search runbooks -->
+<circle cx="32" cy="155" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot3 15s infinite"/>
+<g opacity="0" style="animation:show3 15s infinite">
+  <rect x="50" y="137" width="470" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
+  <text x="62" y="154" fill="#e4e4e7" font-size="12" font-weight="500">Searching runbooks: GPU thermal throttling</text>
+  <text x="62" y="170" fill="#71717a" font-size="10" opacity="0" style="animation:sub3 15s infinite">2 sections from gpu_thermal_throttling.md</text>
 </g>
 
-<!-- Step 4 -->
-<circle cx="32" cy="244" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d4"/>
-<g class="s4" opacity="0">
-  <rect x="50" y="226" width="450" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
-  <text x="62" y="243" fill="#e4e4e7" font-size="12" font-weight="500">Looking up node-gpu-rack12-01</text>
-  <text x="62" y="259" fill="#71717a" font-size="10" class="r4" opacity="0">8x A100 80GB, healthy, 2104h uptime</text>
+<!-- Step 4: Look up host -->
+<circle cx="32" cy="220" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot4 15s infinite"/>
+<g opacity="0" style="animation:show4 15s infinite">
+  <rect x="50" y="202" width="470" height="44" rx="6" fill="#1e1e22" stroke="#2e2e33" stroke-width="1"/>
+  <text x="62" y="219" fill="#e4e4e7" font-size="12" font-weight="500">Looking up node-gpu-rack12-01</text>
+  <text x="62" y="235" fill="#71717a" font-size="10" opacity="0" style="animation:sub4 15s infinite">8x A100 80GB, healthy, 2104h uptime</text>
 </g>
 
-<!-- Step 5 -->
-<circle cx="32" cy="316" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d5"/>
-<g class="s5" opacity="0">
-  <rect x="50" y="298" width="450" height="44" rx="6" fill="#1e1e22" stroke="#2563eb" stroke-width="1.5"/>
-  <text x="62" y="315" fill="#e4e4e7" font-size="12" font-weight="500">Creating incident: Thermal cascade in rack-12</text>
-  <text x="62" y="331" fill="#71717a" font-size="10" class="r5" opacity="0">Created INC-A4EB2CFB (P1) — dc-ops-tokyo</text>
+<!-- Decision: Assessment -->
+<circle cx="32" cy="295" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dotD 15s infinite"/>
+<g opacity="0" style="animation:showD 15s infinite">
+  <rect x="50" y="268" width="470" height="62" rx="6" fill="#1e1e22" stroke="#d97706" stroke-width="1.5"/>
+  <text x="62" y="284" fill="#d97706" font-size="11" font-weight="500">Assessment</text>
+  <!-- Three options -->
+  <text x="70" y="300" fill="#52525b" font-size="10">noise / acknowledged</text>
+  <text x="70" y="314" fill="#52525b" font-size="10">create incident</text>
+  <text x="70" y="328" fill="#52525b" font-size="10">create incident + escalate</text>
+  <!-- Chosen path highlights -->
+  <g opacity="0" style="animation:showDP 15s infinite">
+    <rect x="65" y="318" width="165" height="14" rx="3" fill="#dc262615"/>
+    <text x="70" y="328" fill="#f87171" font-size="10" font-weight="500">create incident + escalate</text>
+    <text x="240" y="328" fill="#71717a" font-size="10">&#x2190; 3 correlated critical alerts, active cascade</text>
+  </g>
 </g>
 
-<!-- Step 6 -->
-<circle cx="32" cy="388" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d6"/>
-<g class="s6" opacity="0">
-  <rect x="50" y="370" width="450" height="32" rx="6" fill="#1e1e22" stroke="#dc2626" stroke-width="1.5"/>
-  <text x="62" y="390" fill="#f87171" font-size="12" font-weight="500">Escalated via slack, pager — immediate</text>
+<!-- Step 5: Create incident -->
+<circle cx="32" cy="378" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot5 15s infinite"/>
+<g opacity="0" style="animation:show5 15s infinite">
+  <rect x="50" y="360" width="470" height="44" rx="6" fill="#1e1e22" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="62" y="377" fill="#e4e4e7" font-size="12" font-weight="500">Creating incident: Thermal cascade in rack-12</text>
+  <text x="62" y="393" fill="#71717a" font-size="10" opacity="0" style="animation:sub5 15s infinite">Created INC-A4EB2CFB (P1) — dc-ops-tokyo</text>
 </g>
+
+<!-- Step 6: Escalate -->
+<circle cx="32" cy="448" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" style="animation:dot6 15s infinite"/>
+<g opacity="0" style="animation:show6 15s infinite">
+  <rect x="50" y="430" width="470" height="32" rx="6" fill="#1e1e22" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="62" y="450" fill="#f87171" font-size="12" font-weight="500">Escalated via slack, pager — immediate urgency</text>
+</g>
+
+<!-- Label -->
+<text x="32" y="500" fill="#52525b" font-size="9" text-anchor="middle">&#x25cf;</text>
+<text x="50" y="500" fill="#3f3f46" font-size="9">Triage complete — result streamed to dashboard</text>
 </svg>
