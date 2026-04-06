@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ops Triage Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -37,6 +38,19 @@
         .severity-info { border-left: 3px solid #2563eb; }
         details summary { list-style: none; }
         details summary::-webkit-details-marker { display: none; }
+        .qa-answer h1, .qa-answer h2, .qa-answer h3 { color: #a1a1aa; font-weight: 500; margin: 0.75rem 0 0.25rem; font-size: 13px; }
+        .qa-answer h4 { color: #a1a1aa; font-weight: 500; margin: 0.5rem 0 0.25rem; font-size: 12px; }
+        .qa-answer p { margin: 0.35rem 0; }
+        .qa-answer ul, .qa-answer ol { margin: 0.25rem 0 0.25rem 1rem; }
+        .qa-answer li { margin: 0.15rem 0; }
+        .qa-answer strong { color: #e4e4e7; font-weight: 500; }
+        .qa-answer code { font-family: 'SF Mono', Consolas, monospace; font-size: 11px; background: #27272a; padding: 1px 4px; border-radius: 3px; color: #a1a1aa; }
+        .qa-answer table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 11px; }
+        .qa-answer th, .qa-answer td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #2e2e33; }
+        .qa-answer th { color: #a1a1aa; font-weight: 500; }
+        .qa-answer td { color: #71717a; }
+        .qa-answer hr { border-color: #2e2e33; margin: 0.5rem 0; }
+        .qa-answer em { font-style: italic; color: #a1a1aa; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -698,7 +712,7 @@ qaForm.addEventListener('submit', async (e) => {
         aEl.className = 'fade-in';
         aEl.innerHTML = `
             <div class="bg-card rounded-md p-3 space-y-2">
-                <div class="qa-answer text-[13px] text-fg-muted leading-relaxed">${renderMd(data.answer)}</div>
+                <div class="qa-answer text-[12px] text-fg-muted leading-relaxed max-h-80 overflow-y-auto scrollbar-thin">${renderMd(data.answer)}</div>
                 ${data.sources?.length ? `
                 <div class="border-t border-border pt-2">
                     <div class="flex flex-wrap gap-1">
@@ -768,15 +782,7 @@ function formatOutput(output) {
 
 function renderMd(text) {
     if (!text) return '';
-    return esc(text)
-        .replace(/^### (.+)$/gm, '<h4 class="text-fg font-medium mt-3 mb-1">$1</h4>')
-        .replace(/^## (.+)$/gm, '<h3 class="text-fg font-medium mt-3 mb-1">$1</h3>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-fg font-medium">$1</strong>')
-        .replace(/`([^`]+)`/g, '<code class="mono text-[12px] bg-hover px-1 py-0.5 rounded text-fg-dim">$1</code>')
-        .replace(/^- (.+)$/gm, '<li class="ml-3 flex gap-1.5"><span class="text-fg-faint select-none">-</span><span>$1</span></li>')
-        .replace(/^\d+\. (.+)$/gm, '<li class="ml-3 text-fg-muted">$1</li>')
-        .replace(/\n{2,}/g, '</p><p class="mt-2">')
-        .replace(/\n/g, '<br>');
+    return marked.parse(text);
 }
 
 connectAlertStream();

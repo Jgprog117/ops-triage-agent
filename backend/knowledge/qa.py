@@ -14,7 +14,8 @@ Rules:
 - Cite which runbook you're referencing
 - If the answer isn't fully covered in the runbooks, say so clearly
 - Include specific thresholds and procedures when available
-- Your audience may not have deep hardware experience — prioritize clarity over jargon"""
+- Your audience may not have deep hardware experience — prioritize clarity over jargon
+- Keep answers concise — aim for 3-6 short paragraphs max. Avoid large tables; use bullet points instead"""
 
 
 async def answer_question(query: str) -> dict:
