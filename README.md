@@ -1,6 +1,8 @@
 # Ops Triage Agent
 
-An autonomous agent that monitors data center alerts, triages incidents, and escalates critical issues — with full reasoning traces streamed to a live dashboard.
+An autonomous AI agent that monitors data center alerts, triages incidents, and escalates critical issues — replacing manual on-call toil with a tool-use loop that reasons, correlates, and acts in real time.
+
+Internal AI tooling that keeps infrastructure teams focused on what matters: an agent that handles the repetitive alert noise so engineers can focus on the hard problems.
 
 ![Architecture](docs/architecture.svg)
 
@@ -49,7 +51,7 @@ LLM_API_KEY=
 
 ![Agent flow](docs/agent-flow.svg)
 
-The triage agent runs a tool-use loop: it receives an alert, gathers context by calling tools (query correlated alerts, look up host info, search runbooks), then decides on a classification and next steps. Each step is streamed to the dashboard in real time via SSE.
+The triage agent runs a tool-use loop: it receives an alert, gathers context by calling tools (query correlated alerts, look up host info, search runbooks), then decides on a classification and next steps. Each step is streamed to the dashboard via SSE.
 
 **Tools available to the agent:**
 
@@ -94,6 +96,8 @@ python -m pytest tests/ -v
 
 68 tests covering the parser, Pydantic models, scenario structure, RAG chunking, and LLM client (including Anthropic format conversion).
 
-## Development process
+## Design principles
 
-This project was scaffolded with AI assistance and then hardened through manual engineering review — 10 bug fixes, 68 unit tests, evaluation framework, and webhook integration. See [EVALUATION.md](EVALUATION.md) for the triage accuracy assessment framework.
+- **Model-agnostic** — swap LLM providers (or plug in your own inference endpoint) without touching agent logic
+- **Observable** — every reasoning step is streamed to the dashboard; audit logs capture all tool calls and decisions
+- **Evaluation-aware** — see [EVALUATION.md](EVALUATION.md) for the triage accuracy assessment framework
