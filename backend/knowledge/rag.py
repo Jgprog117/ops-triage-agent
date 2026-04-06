@@ -1,11 +1,3 @@
-"""ChromaDB knowledge base for data center operations runbooks.
-
-Loads runbook markdown files, chunks them, and stores embeddings in
-ChromaDB using the all-MiniLM-L6-v2 sentence transformer model. Provides
-vector search for the triage agent's search_runbooks tool and the
-standalone RAG Q&A endpoint.
-"""
-
 import logging
 from pathlib import Path
 
@@ -25,7 +17,6 @@ CHUNK_OVERLAP = 200    # Characters (~50 tokens)
 
 
 def _chunk_text(text: str, source: str) -> list[dict]:
-    """Split text into overlapping chunks with metadata."""
     chunks = []
     lines = text.split("\n")
     current_section = "overview"
@@ -33,7 +24,6 @@ def _chunk_text(text: str, source: str) -> list[dict]:
     current_len = 0
 
     for line in lines:
-        # Track section headers for metadata
         if line.startswith("## "):
             current_section = line.lstrip("# ").strip().lower().replace(" ", "_")
 
@@ -58,7 +48,6 @@ def _chunk_text(text: str, source: str) -> list[dict]:
             current_chunk = current_chunk[overlap_start:]
             current_len = sum(len(line) + 1 for line in current_chunk)
 
-    # Don't forget the last chunk
     if current_chunk:
         chunk_text = "\n".join(current_chunk)
         if chunk_text.strip():
@@ -71,8 +60,7 @@ def _chunk_text(text: str, source: str) -> list[dict]:
     return chunks
 
 
-async def init_knowledge_base() -> None:
-    """Load runbook documents into ChromaDB, creating embeddings."""
+def init_knowledge_base() -> None:
     global _collection, _client
 
     chroma_path = Path(settings.CHROMA_PATH)
@@ -89,12 +77,10 @@ async def init_knowledge_base() -> None:
         metadata={"hnsw:space": "cosine"},
     )
 
-    # Check if already populated
     if _collection.count() > 0:
         logger.info("Knowledge base already loaded (%d chunks)", _collection.count())
         return
 
-    # Load and chunk all runbook files
     runbook_files = sorted(RUNBOOKS_DIR.glob("*.md"))
     if not runbook_files:
         logger.warning("No runbook files found in %s", RUNBOOKS_DIR)
@@ -107,7 +93,6 @@ async def init_knowledge_base() -> None:
         all_chunks.extend(chunks)
         logger.debug("Chunked %s into %d pieces", filepath.name, len(chunks))
 
-    # Batch insert into ChromaDB
     _collection.add(
         ids=[f"chunk-{i}" for i in range(len(all_chunks))],
         documents=[c["text"] for c in all_chunks],
@@ -119,15 +104,6 @@ async def init_knowledge_base() -> None:
 
 
 def search_runbooks(query: str, n_results: int = 3) -> list[dict]:
-    """Search the runbook knowledge base and return relevant chunks.
-
-    Args:
-        query: Natural language search query.
-        n_results: Number of results to return.
-
-    Returns:
-        List of dicts with 'text', 'source', and 'section' keys.
-    """
     if _collection is None:
         logger.warning("Knowledge base not initialized")
         return []

@@ -1,10 +1,3 @@
-"""Core triage agent loop with tool-use and step broadcasting.
-
-Hand-rolled agent that processes data center alerts through an iterative
-tool-use loop. Each step (tool call, tool result, final decision) is
-broadcast via SSE so the frontend can display a live reasoning trace.
-"""
-
 import asyncio
 import json
 import logging
@@ -28,7 +21,6 @@ _semaphore = asyncio.Semaphore(3)
 
 
 def _build_user_message(alert: dict) -> str:
-    """Format an alert into the initial user message for the agent."""
     return f"""A new alert has been received. Triage it.
 
 Alert details:
@@ -56,7 +48,6 @@ async def _broadcast_step(
     tool_output: Any = None,
     triage_result: TriageResult | None = None,
 ) -> None:
-    """Broadcast a triage step event via SSE."""
     step_data = {
         "alert_id": alert_id,
         "step": step_num,
@@ -65,24 +56,12 @@ async def _broadcast_step(
         "tool_input": tool_input,
         "tool_output": tool_output,
         "triage_result": triage_result.model_dump() if triage_result else None,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     }
     await broadcast_triage_step(alert_id, step_data)
 
 
 async def triage_alert(alert: dict) -> TriageResult | None:
-    """Run the triage agent loop for a single alert.
-
-    The agent iteratively calls tools to gather information, then
-    produces a final triage classification. Each step is broadcast
-    via SSE for the frontend's live reasoning trace.
-
-    Args:
-        alert: The alert dictionary to triage.
-
-    Returns:
-        The final TriageResult, or None if triage failed.
-    """
     async with _semaphore:
         alert_id = alert["id"]
         logger.info("Starting triage for alert %s (%s: %s)",
@@ -104,7 +83,6 @@ async def triage_alert(alert: dict) -> TriageResult | None:
                 message = llm.extract_message(response)
 
                 if llm.has_tool_calls(message):
-                    # Process each tool call
                     tool_calls = llm.get_tool_calls(message)
                     messages.append(message)
 
@@ -114,37 +92,33 @@ async def triage_alert(alert: dict) -> TriageResult | None:
                         raw_args = tc["function"]["arguments"]
                         arguments = parse_tool_arguments(raw_args)
 
-                        # Broadcast tool call
                         await _broadcast_step(
                             alert_id, step_num, "tool_call",
-                            tool_name=func_name, tool_input=arguments,
+                            tool_name=func_name, tool_input=arguments or {},
                         )
 
-                        # Execute tool
-                        result = await execute_tool(func_name, arguments)
+                        if arguments is None:
+                            result = json.dumps({"error": f"Failed to parse arguments for {func_name}. Ensure valid JSON."})
+                        else:
+                            result = await execute_tool(func_name, arguments)
 
-                        # Broadcast tool result
                         step_num += 1
-                        # Truncate large results for the SSE broadcast
                         display_result = result if len(result) < 2000 else result[:2000] + "...(truncated)"
                         await _broadcast_step(
                             alert_id, step_num, "tool_result",
                             tool_name=func_name, tool_output=display_result,
                         )
 
-                        # Add tool result to conversation
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc["id"],
                             "content": result,
                         })
                 else:
-                    # No tool calls — agent is done, parse final result
                     content = llm.get_content(message)
                     triage_result = parse_triage_result(content)
 
                     if triage_result is None:
-                        # If parsing fails, create a default result
                         logger.warning("Failed to parse triage result for alert %s, using default", alert_id)
                         triage_result = TriageResult(
                             classification="acknowledged",
@@ -168,7 +142,6 @@ async def triage_alert(alert: dict) -> TriageResult | None:
                     logger.info("Triage complete for %s: %s", alert_id, triage_result.classification)
                     return triage_result
 
-            # Max steps reached
             logger.warning("Max steps reached for alert %s", alert_id)
             fallback = TriageResult(
                 classification="acknowledged",
@@ -183,7 +156,7 @@ async def triage_alert(alert: dict) -> TriageResult | None:
 
         except Exception:
             logger.exception("Triage failed for alert %s", alert_id)
-            await update_alert_triage_status(alert_id, "pending")
+            await update_alert_triage_status(alert_id, "error")
             error_result = TriageResult(
                 classification="acknowledged",
                 root_cause_hypothesis="Triage agent error — manual review required",

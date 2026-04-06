@@ -1,10 +1,3 @@
-"""Response parsing utilities for the triage agent.
-
-Handles extraction of tool calls and final triage results from
-LLM responses, with robust JSON parsing that handles markdown
-code fences and partial outputs.
-"""
-
 import json
 import logging
 import re
@@ -15,20 +8,15 @@ from backend.db.models import TriageResult
 logger = logging.getLogger(__name__)
 
 
-def parse_tool_arguments(raw: str) -> dict[str, Any]:
-    """Parse tool call arguments from a JSON string.
-
-    Handles cases where the LLM might return slightly malformed JSON.
-    """
+def parse_tool_arguments(raw: str) -> dict[str, Any] | None:
     try:
         return json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse tool arguments: %s", raw[:200])
-        return {}
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Failed to parse tool arguments: %s", str(raw)[:200])
+        return None
 
 
 def extract_json_from_text(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from text that may contain markdown code fences."""
     # Try direct parse first
     text = text.strip()
     if text.startswith("{"):
@@ -37,7 +25,6 @@ def extract_json_from_text(text: str) -> dict[str, Any] | None:
         except json.JSONDecodeError:
             pass
 
-    # Try extracting from code fence
     patterns = [
         r"```json\s*\n(.*?)\n\s*```",
         r"```\s*\n(.*?)\n\s*```",
@@ -57,14 +44,6 @@ def extract_json_from_text(text: str) -> dict[str, Any] | None:
 
 
 def parse_triage_result(content: str) -> TriageResult | None:
-    """Parse the final triage result from the agent's response.
-
-    Args:
-        content: The text content of the LLM's final response.
-
-    Returns:
-        A TriageResult if parsing succeeds, None otherwise.
-    """
     data = extract_json_from_text(content)
     if data is None:
         logger.warning("Could not extract triage JSON from response")

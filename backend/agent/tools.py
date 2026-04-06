@@ -1,14 +1,14 @@
-"""Tool implementations for the triage agent.
-
-Each tool function corresponds to a tool the LLM can call during triage.
-All tools are async and interact with the database or knowledge base.
-"""
-
+import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import uuid
 from typing import Any
 
+import httpx
+
+from backend.config import settings
 from backend.db.database import (
     get_host,
     get_recent_alerts,
@@ -28,7 +28,6 @@ async def query_recent_alerts(
     category: str | None = None,
     severity: str | None = None,
 ) -> str:
-    """Search recent alerts with optional filters. Returns JSON summary."""
     alerts = await get_recent_alerts(
         minutes_ago=minutes_ago,
         rack=rack,
@@ -41,7 +40,6 @@ async def query_recent_alerts(
     if not alerts:
         return json.dumps({"count": 0, "alerts": [], "message": "No matching alerts found"})
 
-    # Return a concise summary to keep context window manageable
     summary = []
     for a in alerts:
         summary.append({
@@ -61,8 +59,8 @@ async def query_recent_alerts(
 
 
 async def search_runbooks_tool(query: str) -> str:
-    """Search the runbook knowledge base. Returns relevant excerpts."""
-    results = kb_search(query, n_results=3)
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(None, lambda: kb_search(query, n_results=3))
 
     if not results:
         return json.dumps({"message": "No relevant runbook entries found"})
@@ -80,7 +78,6 @@ async def search_runbooks_tool(query: str) -> str:
 
 
 async def get_host_info(host: str) -> str:
-    """Look up host metadata from the database."""
     host_data = await get_host(host)
 
     if not host_data:
@@ -111,7 +108,6 @@ async def create_incident_tool(
     correlated_alert_ids: list[str] | None = None,
     assigned_team: str | None = None,
 ) -> str:
-    """Create a formal incident record. Returns the incident ID."""
     incident_id = f"INC-{uuid.uuid4().hex[:8].upper()}"
 
     incident = {
@@ -151,7 +147,6 @@ async def escalate_tool(
     urgency: str,
     notification_channels: list[str] | None = None,
 ) -> str:
-    """Escalate an incident to the on-call team."""
     escalation_id = f"ESC-{uuid.uuid4().hex[:8].upper()}"
     channels = notification_channels or ["slack", "pager"]
 
@@ -173,6 +168,11 @@ async def escalate_tool(
     logger.info("Escalation %s sent for incident %s (urgency: %s)",
                 escalation_id, incident_id, urgency)
 
+    if settings.WEBHOOK_URL:
+        task = asyncio.create_task(_send_webhook(escalation))
+        _webhook_tasks.add(task)
+        task.add_done_callback(_webhook_tasks.discard)
+
     return json.dumps({
         "escalation_id": escalation_id,
         "incident_id": incident_id,
@@ -182,7 +182,23 @@ async def escalate_tool(
     })
 
 
-# Map tool names to their implementation functions
+_webhook_tasks: set[asyncio.Task] = set()
+
+
+async def _send_webhook(payload: dict) -> None:
+    try:
+        body = json.dumps(payload)
+        headers = {"Content-Type": "application/json"}
+        if settings.WEBHOOK_SECRET:
+            sig = hmac.new(settings.WEBHOOK_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+            headers["X-Signature-SHA256"] = sig
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(settings.WEBHOOK_URL, content=body, headers=headers)
+            logger.info("Webhook sent: %d", resp.status_code)
+    except Exception:
+        logger.exception("Webhook delivery failed")
+
+
 TOOL_REGISTRY: dict[str, Any] = {
     "query_recent_alerts": query_recent_alerts,
     "search_runbooks": search_runbooks_tool,
@@ -193,15 +209,6 @@ TOOL_REGISTRY: dict[str, Any] = {
 
 
 async def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
-    """Execute a tool by name with the given arguments.
-
-    Args:
-        tool_name: Name of the tool to execute.
-        arguments: Keyword arguments for the tool function.
-
-    Returns:
-        JSON string with the tool result.
-    """
     func = TOOL_REGISTRY.get(tool_name)
     if func is None:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

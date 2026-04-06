@@ -1,11 +1,5 @@
-"""RAG-powered Q&A endpoint for the knowledge base.
-
-Retrieves relevant runbook chunks via vector search, then sends them
-to the LLM with the user's question for a grounded, cited answer.
-"""
-
+import asyncio
 import logging
-from typing import Any
 
 from backend.knowledge.rag import search_runbooks
 from backend.llm.client import llm
@@ -21,17 +15,9 @@ Rules:
 - Keep your answer concise but complete"""
 
 
-async def answer_question(query: str) -> dict[str, Any]:
-    """Answer a question using RAG over the runbook knowledge base.
-
-    Args:
-        query: The user's natural language question.
-
-    Returns:
-        Dict with 'answer' (str) and 'sources' (list of source dicts).
-    """
-    # Retrieve relevant chunks
-    chunks = search_runbooks(query, n_results=5)
+async def answer_question(query: str) -> dict:
+    loop = asyncio.get_running_loop()
+    chunks = await loop.run_in_executor(None, lambda: search_runbooks(query, n_results=5))
 
     if not chunks:
         return {
@@ -39,7 +25,6 @@ async def answer_question(query: str) -> dict[str, Any]:
             "sources": [],
         }
 
-    # Build context from chunks
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
         context_parts.append(
@@ -62,7 +47,6 @@ async def answer_question(query: str) -> dict[str, Any]:
         logger.exception("LLM call failed for knowledge Q&A")
         answer = "Unable to generate an answer at this time. Please check LLM configuration."
 
-    # Deduplicate sources
     seen = set()
     sources = []
     for chunk in chunks:

@@ -1,11 +1,3 @@
-"""Alert generation engine that produces realistic data center events.
-
-Runs as an asyncio background task, generating either isolated random
-alerts (70%) or correlated multi-step failure scenarios (30%). Each
-alert is persisted to the database and broadcast via SSE to all
-connected frontend clients.
-"""
-
 import asyncio
 import logging
 import random
@@ -13,8 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from backend.config import settings
-from backend.db.database import insert_alert, update_alert_triage_status, insert_audit_log
-from backend.db.models import Severity
+from backend.db.database import insert_alert, insert_audit_log
 from backend.simulator.components import (
     CATEGORY_METRICS,
     CRAC_UNITS,
@@ -28,18 +19,16 @@ from backend.sse.broadcaster import broadcast_alert
 
 logger = logging.getLogger(__name__)
 
-# Will be set by the triage agent module to avoid circular imports
-_triage_callback = None
+_triage_callback = None  # set by triage agent module to avoid circular imports
+_background_tasks: set[asyncio.Task] = set()
 
 
 def set_triage_callback(callback) -> None:
-    """Register the triage agent callback for processing alerts."""
     global _triage_callback
     _triage_callback = callback
 
 
 def _generate_isolated_alert() -> dict:
-    """Generate a single random isolated alert."""
     category = random.choice(list(CATEGORY_METRICS.keys()))
     metric = random.choice(CATEGORY_METRICS[category])
     rack = random.choice(RACKS)
@@ -50,7 +39,6 @@ def _generate_isolated_alert() -> dict:
         k=1,
     )[0]
 
-    # Generate a metric value based on severity
     if severity == "info":
         value = round(random.uniform(metric.normal_min, metric.normal_max), 2)
     elif severity == "warning":
@@ -58,7 +46,6 @@ def _generate_isolated_alert() -> dict:
     else:
         value = round(random.uniform(metric.critical_threshold * 0.95, metric.critical_threshold * 1.15), 2)
 
-    # Select an appropriate component
     if category == "thermal":
         component = random.choice(CRAC_UNITS)
     elif category == "gpu":
@@ -83,7 +70,7 @@ def _generate_isolated_alert() -> dict:
 
     return {
         "id": str(uuid.uuid4()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "severity": severity,
         "category": category,
         "component": component,
@@ -100,21 +87,20 @@ def _generate_isolated_alert() -> dict:
 
 
 async def _emit_alert(alert: dict) -> None:
-    """Persist an alert, broadcast it via SSE, and trigger triage if needed."""
     await insert_alert(alert)
     await insert_audit_log("alert_received", alert["id"], {"severity": alert["severity"], "category": alert["category"]})
     await broadcast_alert({"type": "new_alert", "alert": alert})
 
-    # Trigger triage for warning and critical alerts
-    if alert["severity"] in (Severity.WARNING, Severity.CRITICAL, "warning", "critical"):
+    if alert["severity"] in ("warning", "critical"):
         if _triage_callback:
-            asyncio.create_task(_triage_callback(alert))
+            task = asyncio.create_task(_triage_callback(alert))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
         else:
             logger.debug("No triage callback registered, skipping triage for alert %s", alert["id"])
 
 
 async def _run_scenario() -> None:
-    """Execute a correlated failure scenario, emitting alerts with delays."""
     scenario = pick_scenario()
     logger.info("Starting scenario: %s — %s", scenario.name, scenario.description)
 
@@ -124,7 +110,7 @@ async def _run_scenario() -> None:
 
         alert = {
             "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "severity": step.severity,
             "category": step.category,
             "component": step.component,
@@ -144,11 +130,6 @@ async def _run_scenario() -> None:
 
 
 async def alert_simulator() -> None:
-    """Main alert generation loop. Runs as a background task.
-
-    Generates isolated alerts ~70% of the time and correlated failure
-    scenarios ~30% of the time (configurable via SCENARIO_PROBABILITY).
-    """
     logger.info(
         "Alert simulator started (interval: %d-%ds, scenario probability: %.0f%%)",
         settings.ALERT_INTERVAL_MIN,

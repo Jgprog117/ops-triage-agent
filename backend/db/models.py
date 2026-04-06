@@ -1,15 +1,9 @@
-"""Pydantic models for all database entities and API schemas."""
-
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-# --- Enums ---
 
 class Severity(str, Enum):
     INFO = "info"
@@ -30,6 +24,7 @@ class TriageStatus(str, Enum):
     PENDING = "pending"
     TRIAGING = "triaging"
     TRIAGED = "triaged"
+    ERROR = "error"
 
 
 class Classification(str, Enum):
@@ -66,10 +61,7 @@ class Urgency(str, Enum):
     NEXT_BUSINESS_DAY = "next_business_day"
 
 
-# --- Core Models ---
-
 class Alert(BaseModel):
-    """A data center monitoring alert."""
     id: str
     timestamp: datetime
     severity: Severity
@@ -87,7 +79,6 @@ class Alert(BaseModel):
 
 
 class Incident(BaseModel):
-    """A formal incident record created by the triage agent."""
     id: str
     title: str
     severity: IncidentSeverity
@@ -102,7 +93,6 @@ class Incident(BaseModel):
 
 
 class Escalation(BaseModel):
-    """An escalation record for critical incidents."""
     id: str
     incident_id: str
     reason: str
@@ -112,7 +102,6 @@ class Escalation(BaseModel):
 
 
 class Host(BaseModel):
-    """Data center host metadata."""
     hostname: str
     rack: str
     datacenter: str = "dc-tokyo-01"
@@ -127,19 +116,7 @@ class Host(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class AuditLogEntry(BaseModel):
-    """An entry in the audit log."""
-    id: int | None = None
-    timestamp: datetime | None = None
-    event_type: str
-    entity_id: str | None = None
-    details: dict[str, Any] = Field(default_factory=dict)
-
-
-# --- API Request/Response Models ---
-
 class TriageResult(BaseModel):
-    """The final output of the triage agent."""
     classification: Classification
     root_cause_hypothesis: str
     correlated_alert_ids: list[str] = Field(default_factory=list)
@@ -151,18 +128,15 @@ class TriageResult(BaseModel):
 
 
 class KnowledgeQuery(BaseModel):
-    """Request body for the RAG Q&A endpoint."""
     query: str
 
 
 class KnowledgeAnswer(BaseModel):
-    """Response from the RAG Q&A endpoint."""
     answer: str
     sources: list[dict[str, str]]
 
 
 class AgentStep(BaseModel):
-    """A single step in the agent's reasoning trace, broadcast via SSE."""
     alert_id: str
     step: int
     type: str  # tool_call | tool_result | final_triage
@@ -174,7 +148,6 @@ class AgentStep(BaseModel):
 
 
 class DashboardStats(BaseModel):
-    """Aggregated statistics for the dashboard."""
     total_alerts: int = 0
     alerts_last_hour: int = 0
     total_incidents: int = 0

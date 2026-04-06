@@ -1,11 +1,3 @@
-"""Correlated failure scenario definitions for the alert simulator.
-
-Each scenario is a sequence of 3-5 alerts that fire over 15-45 seconds,
-simulating realistic cascading failures in data center infrastructure.
-These correlated alerts are what make the triage agent interesting — it
-must determine which alerts are related and identify root causes.
-"""
-
 from __future__ import annotations
 
 import random
@@ -16,7 +8,6 @@ from backend.simulator.components import RACK_HOSTS, RACKS
 
 @dataclass
 class ScenarioAlert:
-    """A single alert within a correlated scenario."""
     delay_seconds: float
     severity: str
     category: str
@@ -32,14 +23,12 @@ class ScenarioAlert:
 
 @dataclass
 class Scenario:
-    """A correlated failure scenario consisting of sequential alerts."""
     name: str
     description: str
     alerts: list[ScenarioAlert]
 
 
 def thermal_cascade() -> Scenario:
-    """CRAC failure leading to GPU thermal throttling and training job failures."""
     rack = random.choice(["rack-12", "rack-14", "rack-18"])
     hosts = RACK_HOSTS[rack]
     crac_unit = f"CRAC-Unit-{random.randint(1, 4)}"
@@ -107,7 +96,6 @@ def thermal_cascade() -> Scenario:
 
 
 def gpu_hardware_failure() -> Scenario:
-    """GPU ECC errors escalating to NVLink failure and node health issues."""
     rack = random.choice(["rack-12", "rack-14", "rack-18"])
     hosts = RACK_HOSTS[rack]
     host = random.choice(hosts)
@@ -175,7 +163,6 @@ def gpu_hardware_failure() -> Scenario:
 
 
 def network_partition() -> Scenario:
-    """Switch port flapping causing packet loss and training job stall."""
     rack = random.choice(RACKS)
     hosts = RACK_HOSTS[rack]
     switch = f"TOR-Switch-{rack}"
@@ -241,11 +228,11 @@ def network_partition() -> Scenario:
 
 
 def storage_degradation() -> Scenario:
-    """Disk SMART warnings escalating to checkpoint write failures."""
     rack = "rack-16"
     hosts = RACK_HOSTS[rack]
     storage_host = random.choice([h for h in hosts if "storage" in h])
-    gpu_host = random.choice(RACK_HOSTS[random.choice(["rack-12", "rack-14", "rack-18"])])
+    gpu_rack = random.choice(["rack-12", "rack-14", "rack-18"])
+    gpu_host = random.choice(RACK_HOSTS[gpu_rack])
 
     return Scenario(
         name="storage_degradation",
@@ -283,7 +270,7 @@ def storage_degradation() -> Scenario:
                 category="storage",
                 component="checkpoint-volume",
                 host=gpu_host,
-                rack=rack,
+                rack=gpu_rack,
                 metric_name="io_latency_ms",
                 metric_value=round(random.uniform(200.0, 500.0), 1),
                 threshold=200.0,
@@ -296,7 +283,7 @@ def storage_degradation() -> Scenario:
                 category="storage",
                 component="model-storage",
                 host=gpu_host,
-                rack=rack,
+                rack=gpu_rack,
                 metric_name="disk_smart_errors",
                 metric_value=float(random.randint(20, 50)),
                 threshold=20.0,
@@ -308,7 +295,6 @@ def storage_degradation() -> Scenario:
 
 
 def power_anomaly() -> Scenario:
-    """PDU voltage fluctuation causing UPS engagement and load shedding."""
     rack = random.choice(RACKS)
     pdu = f"PDU-{'AB'[random.randint(0, 1)]}{random.randint(1, 2)}"
     hosts = RACK_HOSTS[rack]
@@ -348,7 +334,7 @@ def power_anomaly() -> Scenario:
                 severity="warning",
                 category="power",
                 component=pdu,
-                host=hosts[0],
+                host=random.choice(hosts),
                 rack=rack,
                 metric_name="power_draw_kw",
                 metric_value=round(random.uniform(10.0, 18.0), 1),
@@ -361,7 +347,7 @@ def power_anomaly() -> Scenario:
                 severity="info",
                 category="power",
                 component=pdu,
-                host=hosts[0],
+                host=random.choice(hosts),
                 rack=rack,
                 metric_name="voltage_v",
                 metric_value=round(random.uniform(208.0, 212.0), 1),
@@ -373,7 +359,6 @@ def power_anomaly() -> Scenario:
     )
 
 
-# Registry of all scenario generators
 SCENARIOS = [
     thermal_cascade,
     gpu_hardware_failure,
@@ -384,6 +369,5 @@ SCENARIOS = [
 
 
 def pick_scenario() -> Scenario:
-    """Select a random correlated failure scenario."""
     generator = random.choice(SCENARIOS)
     return generator()

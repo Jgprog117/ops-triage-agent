@@ -1,9 +1,3 @@
-"""FastAPI application entry point for the ai& Ops Agent.
-
-Orchestrates startup (database, knowledge base, alert simulator),
-mounts all API routes, and serves the frontend.
-"""
-
 import asyncio
 import logging
 import time
@@ -19,6 +13,7 @@ from backend.db.seed import seed_host_data
 from backend.knowledge.rag import init_knowledge_base
 from backend.simulator.engine import alert_simulator, set_triage_callback
 from backend.agent.triage import triage_alert
+from backend.llm.client import llm
 from backend.routes import alerts, incidents, knowledge, stream, stats, config
 from backend.routes.stats import set_start_time
 
@@ -34,20 +29,16 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifecycle: initialize services on startup, cleanup on shutdown."""
     set_start_time(time.time())
     logger.info("Starting ai& Ops Agent...")
 
-    # Initialize database and seed data
     await init_database()
     await seed_host_data()
     logger.info("Database ready")
 
-    # Load runbooks into ChromaDB
-    await init_knowledge_base()
+    await asyncio.to_thread(init_knowledge_base)
     logger.info("Knowledge base ready")
 
-    # Register the triage callback and start the alert simulator
     set_triage_callback(triage_alert)
     simulator_task = asyncio.create_task(alert_simulator())
     logger.info("Alert simulator started")
@@ -56,13 +47,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     simulator_task.cancel()
     try:
         await simulator_task
     except asyncio.CancelledError:
         pass
     await close_database()
+    await llm.close()
     logger.info("ai& Ops Agent shut down")
 
 
@@ -73,7 +64,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Register API routes
 app.include_router(stream.router)
 app.include_router(alerts.router)
 app.include_router(incidents.router)
@@ -84,16 +74,13 @@ app.include_router(config.router)
 
 @app.get("/health")
 async def health_check() -> dict:
-    """Health check endpoint."""
     return {"status": "healthy", "service": "aiand-ops-agent"}
 
 
 @app.get("/")
 async def serve_frontend() -> FileResponse:
-    """Serve the frontend dashboard."""
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
-# Serve static assets (CSS, JS, images if any)
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
