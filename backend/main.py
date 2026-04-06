@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.auth import AuthMiddleware
 from backend.config import settings
 from backend.db.database import init_database, close_database, get_db
 from backend.middleware.rate_limit import RateLimitMiddleware
@@ -73,7 +72,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(AuthMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 app.include_router(stream.router)

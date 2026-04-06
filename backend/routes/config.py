@@ -1,9 +1,8 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.auth import verify_api_key
 from backend.config import Settings, settings
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -31,7 +30,6 @@ async def get_config() -> dict:
 @router.post("")
 async def update_config(
     updates: ConfigUpdate,
-    _: str = Depends(verify_api_key),
 ) -> dict:
     applied = {}
     for field_name, expected_type in Settings.UPDATABLE_FIELDS.items():
