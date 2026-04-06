@@ -4,7 +4,7 @@ from starlette.responses import JSONResponse
 
 from backend.config import settings
 
-EXEMPT_PATHS = {"/health", "/", "/docs", "/openapi.json"}
+EXEMPT_PATHS = {"/health", "/", "/docs", "/openapi.json", "/api/knowledge/ask"}
 EXEMPT_PREFIXES = ("/api/stream/",)
 EXEMPT_METHODS = {"GET", "OPTIONS", "HEAD"}
 
