@@ -1,11 +1,7 @@
-"""Application configuration loaded from environment variables."""
-
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Global settings for the ai& Ops Agent."""
-
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_API_KEY: str = "your-api-key-here"
     LLM_API_BASE: str = "https://api.openai.com/v1"
@@ -15,6 +11,8 @@ class Settings(BaseSettings):
     SCENARIO_PROBABILITY: float = 0.3
     DATABASE_PATH: str = "data/ops_agent.db"
     CHROMA_PATH: str = "data/chroma"
+    WEBHOOK_URL: str = ""
+    WEBHOOK_SECRET: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

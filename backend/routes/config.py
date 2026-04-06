@@ -1,5 +1,3 @@
-"""Configuration read/update endpoints."""
-
 from fastapi import APIRouter, Depends
 
 from backend.auth import verify_api_key
@@ -10,7 +8,6 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 
 @router.get("")
 async def get_config() -> dict:
-    """Get current system configuration (public)."""
     return {
         "llm_model": settings.LLM_MODEL,
         "llm_api_base": settings.LLM_API_BASE,
@@ -25,8 +22,10 @@ async def update_config(
     updates: dict,
     _: str = Depends(verify_api_key),
 ) -> dict:
-    """Update runtime configuration (requires API key)."""
-    allowed_keys = {"ALERT_INTERVAL_MIN", "ALERT_INTERVAL_MAX", "SCENARIO_PROBABILITY"}
+    allowed_keys = {
+        "ALERT_INTERVAL_MIN", "ALERT_INTERVAL_MAX", "SCENARIO_PROBABILITY",
+        "WEBHOOK_URL", "WEBHOOK_SECRET",
+    }
     applied = {}
 
     for key, value in updates.items():
