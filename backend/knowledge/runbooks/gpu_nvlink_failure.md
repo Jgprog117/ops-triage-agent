@@ -47,7 +47,7 @@ If the link recovers after reset, place the node back into service with elevated
 1. Notify ml-platform team of impending node drain via `#ml-platform` Slack.
 2. Allow active training jobs to checkpoint (5 min grace period).
 3. Drain the node: `kubectl drain <node> --grace-period=300 --ignore-daemonsets`
-4. Label the node as degraded: `kubectl label node <node> aiand.co/gpu-health=degraded`
+4. Label the node as degraded: `kubectl label node <node> ops-team.local/gpu-health=degraded`
 5. If a single GPU link is down but the node has other healthy GPU groups, gpu-infra may partition the node to offer a reduced GPU count. This requires manual NCCL topology configuration and is only appropriate for inference workloads, not distributed training.
 
 ## Impact on Multi-GPU Training

@@ -31,7 +31,7 @@ dc-tokyo-01 uses a mix of NVMe SSDs (Samsung PM9A3 3.84TB, Micron 7450 Pro 7.68T
 
 ## Detection
 
-SMART alerts are collected by the `smartctl_exporter` running on every node and aggregated in Prometheus. Dashboard: `grafana.dc-tokyo-01.aiand.internal/d/storage-health`.
+SMART alerts are collected by the `smartctl_exporter` running on every node and aggregated in Prometheus. Dashboard: `grafana.dc-tokyo-01.dc-internal.local/d/storage-health`.
 
 Check a specific drive manually:
 
@@ -67,7 +67,7 @@ For Ceph OSD drives:
 
 1. Identify the drive's physical location using the enclosure LED: `ledctl locate=/dev/<device>`
 2. For hot-swap bays, pull the drive after confirming it is fully offline.
-3. Insert the replacement drive from dc-ops-tokyo spares inventory (tracked in `inventory.dc-tokyo-01.aiand.internal`).
+3. Insert the replacement drive from dc-ops-tokyo spares inventory (tracked in `inventory.dc-tokyo-01.dc-internal.local`).
 4. For Ceph: initialize the new OSD via `ceph-volume lvm create --data /dev/<device>` and unset noout flag.
 5. For local RAID: add the drive back to the array: `mdadm --manage /dev/md0 --add /dev/<device>`
 

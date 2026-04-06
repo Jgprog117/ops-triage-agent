@@ -30,7 +30,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     set_start_time(time.time())
-    logger.info("Starting ai& Ops Agent...")
+    logger.info("Starting Ops Triage Agent...")
 
     await init_database()
     await seed_host_data()
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     simulator_task = asyncio.create_task(alert_simulator())
     logger.info("Alert simulator started")
 
-    logger.info("ai& Ops Agent is running — open http://localhost:3000")
+    logger.info("Ops Triage Agent is running — open http://localhost:3000")
 
     yield
 
@@ -54,11 +54,11 @@ async def lifespan(app: FastAPI):
         pass
     await close_database()
     await llm.close()
-    logger.info("ai& Ops Agent shut down")
+    logger.info("Ops Triage Agent shut down")
 
 
 app = FastAPI(
-    title="ai& Ops Agent",
+    title="Ops Triage Agent",
     description="AI-powered data center incident triage system",
     version="1.0.0",
     lifespan=lifespan,
@@ -74,7 +74,7 @@ app.include_router(config.router)
 
 @app.get("/health")
 async def health_check() -> dict:
-    return {"status": "healthy", "service": "aiand-ops-agent"}
+    return {"status": "healthy", "service": "ops-triage-agent"}
 
 
 @app.get("/")

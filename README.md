@@ -1,8 +1,6 @@
-# ai& Ops Agent — Data Center Incident Triage
+# Ops Triage Agent — Data Center Incident Triage
 
 An AI-powered operations agent that monitors data center alerts, performs automated incident triage, and provides intelligent escalation — built to demonstrate how agentic AI workflows can make infrastructure teams more productive.
-
-Built as a proof of concept for [ai&](https://aiand.com) by Josef Gustafson.
 
 ## What it does
 
@@ -15,8 +13,8 @@ Built as a proof of concept for [ai&](https://aiand.com) by Josef Gustafson.
 ## Quick start
 
 ```bash
-git clone https://github.com/josefgustafson/aiand-ops-agent.git
-cd aiand-ops-agent
+git clone https://github.com/Jgprog117/ops-triage-agent.git
+cd ops-triage-agent
 cp .env.example .env
 # Add your LLM API key to .env
 docker compose up
@@ -27,17 +25,16 @@ Within 60 seconds you'll see live alerts streaming in, being triaged by the AI a
 
 ## Model-agnostic by design
 
-This system integrates with **any** LLM inference endpoint. ai&'s own models can be plugged in by changing a single environment variable:
+This system integrates with **any** LLM inference endpoint. Your own models can be plugged in by changing a single environment variable:
 
 ```bash
-# Use ai&'s own inference endpoint
-LLM_MODEL=ai-and-model
-LLM_API_BASE=https://inference.aiand.com/v1
+# Custom inference endpoint
+LLM_MODEL=your-model-name
+LLM_API_BASE=https://your-inference-endpoint.example.com/v1
 ```
 
 The LLM client is a minimal OpenAI-compatible wrapper with **zero third-party LLM SDK dependencies**. This is a deliberate architectural choice — lightweight dependencies reduce supply chain attack surface (see: LiteLLM PyPI compromise, March 2026), which is critical for internal tooling that handles infrastructure credentials. Any OpenAI-compatible endpoint works out of the box, including:
 
-- ai&'s own inference infrastructure
 - OpenAI API
 - Ollama (local models)
 - vLLM / TGI self-hosted endpoints
@@ -110,7 +107,7 @@ The agent must determine which alerts are correlated — this is what makes the 
 
 ## Why this exists
 
-ai& operates next-generation data centers for AI infrastructure. This PoC demonstrates how an agentic AI workflow can:
+Organizations operating AI data centers face complex, high-stakes infrastructure challenges. This project demonstrates how an agentic AI workflow can:
 
 1. **Reduce mean time to triage** for data center incidents
 2. **Ensure consistent, runbook-compliant** incident response across shifts
@@ -146,7 +143,7 @@ Using AI as a force multiplier for rapid prototyping — then applying engineeri
 ## Project structure
 
 ```
-aiand-ops-agent/
+ops-triage-agent/
 ├── README.md
 ├── Dockerfile
 ├── docker-compose.yml

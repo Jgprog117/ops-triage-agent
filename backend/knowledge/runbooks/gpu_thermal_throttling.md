@@ -23,7 +23,7 @@ Thermal alerts fire via Prometheus when `dcgm_gpu_temp` exceeds threshold for mo
 
 ### 1. Verify CRAC Unit Status
 
-Check the CRAC (Computer Room Air Conditioning) units serving the affected row. Log into the Liebert iCOM controller at `crac-mgmt.dc-tokyo-01.aiand.internal` and confirm all units in the row are operational. If a CRAC unit has faulted, escalate immediately to facilities-tokyo per the CRAC Unit Failure runbook.
+Check the CRAC (Computer Room Air Conditioning) units serving the affected row. Log into the Liebert iCOM controller at `crac-mgmt.dc-tokyo-01.dc-internal.local` and confirm all units in the row are operational. If a CRAC unit has faulted, escalate immediately to facilities-tokyo per the CRAC Unit Failure runbook.
 
 ### 2. Check Airflow Obstructions
 
@@ -51,4 +51,4 @@ This reduces thermal output while the root cause is investigated. Notify the tra
 - **P2 (throttling):** dc-ops-tokyo on-call, notify gpu-infra within 30 minutes.
 - **P1 (shutdown risk):** Page dc-ops-tokyo lead and facilities-tokyo immediately. If ambient temperature exceeds 32C at cold aisle, initiate emergency thermal procedure per CRAC runbook.
 
-**Contact:** dc-ops-tokyo on-call: +81-3-XXXX-4010 | gpu-infra lead: gpu-infra@aiand.co
+**Contact:** dc-ops-tokyo on-call: +81-3-XXXX-4010 | gpu-infra lead: gpu-infra@ops-team.local

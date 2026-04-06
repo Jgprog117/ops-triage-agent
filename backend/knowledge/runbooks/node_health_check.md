@@ -20,7 +20,7 @@ The following thresholds trigger an alert to the dc-ops-tokyo on-call:
 
 ## Manual Diagnostic Commands
 
-Run these from the ops jumpbox (`jump01.dc-tokyo-01.aiand.internal`):
+Run these from the ops jumpbox (`jump01.dc-tokyo-01.dc-internal.local`):
 
 ```
 # Check IPMI sensor readings

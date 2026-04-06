@@ -6,7 +6,7 @@ from backend.llm.client import llm
 
 logger = logging.getLogger(__name__)
 
-QA_SYSTEM_PROMPT = """You are a knowledgeable data center operations assistant for ai&'s dc-tokyo-01 facility. Answer the question based on the provided runbook excerpts. Be specific and actionable.
+QA_SYSTEM_PROMPT = """You are a knowledgeable data center operations assistant for the dc-tokyo-01 facility. Answer the question based on the provided runbook excerpts. Be specific and actionable.
 
 Rules:
 - Cite which runbook you're referencing (e.g., "According to gpu_thermal_throttling.md...")

@@ -16,7 +16,7 @@ Each CRAC unit delivers cold air into the raised floor plenum at 15-18C. Hot ais
 
 ## Temperature Monitoring
 
-Sensors at cold aisle, hot aisle, and rack inlet positions feed into the BMS (Building Management System) at `bms.dc-tokyo-01.aiand.internal`.
+Sensors at cold aisle, hot aisle, and rack inlet positions feed into the BMS (Building Management System) at `bms.dc-tokyo-01.dc-internal.local`.
 
 | Location | Normal | Warning | Critical |
 |----------|--------|---------|----------|
@@ -27,7 +27,7 @@ Sensors at cold aisle, hot aisle, and rack inlet positions feed into the BMS (Bu
 
 ## Detection
 
-CRAC unit faults are reported via BACnet to the BMS and trigger Prometheus alerts via `bacnet_exporter`. The Liebert iCOM controller at `crac-mgmt.dc-tokyo-01.aiand.internal` provides unit-level diagnostics including compressor status, fan speed, refrigerant pressure, and water valve position.
+CRAC unit faults are reported via BACnet to the BMS and trigger Prometheus alerts via `bacnet_exporter`. The Liebert iCOM controller at `crac-mgmt.dc-tokyo-01.dc-internal.local` provides unit-level diagnostics including compressor status, fan speed, refrigerant pressure, and water valve position.
 
 ## Remediation Procedures
 
@@ -43,7 +43,7 @@ CRAC unit faults are reported via BACnet to the BMS and trigger Prometheus alert
 If two or more CRAC units fail in the same zone, or if cold aisle temperature exceeds 27C:
 
 1. **Immediately page dc-ops-tokyo lead and facilities-tokyo lead.** This is a P1 event.
-2. Verify chilled water supply is operational. Check chiller plant status at `bms.dc-tokyo-01.aiand.internal/chillers`. If chilled water supply temp exceeds 10C, the issue is upstream.
+2. Verify chilled water supply is operational. Check chiller plant status at `bms.dc-tokyo-01.dc-internal.local/chillers`. If chilled water supply temp exceeds 10C, the issue is upstream.
 3. Open the hot aisle containment doors in the affected zone to allow ambient mixing as a temporary measure. This is not ideal but slows the rate of temperature rise.
 4. If temperature continues rising, initiate emergency thermal load reduction (see below).
 
@@ -75,6 +75,6 @@ After cooling is restored, allow the room to return to normal temperature range 
 ## Escalation
 
 - **P2 (single unit, stable temps):** facilities-tokyo on-call, repair within 4 hours.
-- **P1 (rising temps or multi-unit failure):** Page dc-ops-tokyo lead, facilities-tokyo lead, and site manager. If EPO is triggered, notify ai& executive on-call and prepare incident report.
+- **P1 (rising temps or multi-unit failure):** Page dc-ops-tokyo lead, facilities-tokyo lead, and site manager. If EPO is triggered, notify executive on-call and prepare incident report.
 
 **Contact:** facilities-tokyo on-call: +81-3-XXXX-4050 | Liebert/Vertiv service: vertiv-apac-emergency@vertiv.com | Chiller plant: managed by facilities-tokyo

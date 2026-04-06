@@ -25,7 +25,7 @@ dc-tokyo-01 uses a 2N redundant power architecture:
 
 ## Detection
 
-PDU metrics are collected via SNMP by `snmp_exporter` and visualized on `grafana.dc-tokyo-01.aiand.internal/d/power-monitoring`. UPS status is monitored via Eaton IPM (Intelligent Power Manager) at `ups-mgmt.dc-tokyo-01.aiand.internal`.
+PDU metrics are collected via SNMP by `snmp_exporter` and visualized on `grafana.dc-tokyo-01.dc-internal.local/d/power-monitoring`. UPS status is monitored via Eaton IPM (Intelligent Power Manager) at `ups-mgmt.dc-tokyo-01.dc-internal.local`.
 
 Check PDU status manually:
 
@@ -38,7 +38,7 @@ Check PDU status manually:
 
 1. Confirm which feed (A or B) is affected via the monitoring dashboard.
 2. Verify the alternate feed is healthy and carrying load. All nodes should continue operating on the redundant feed.
-3. Check the UPS feeding the anomalous PDU path at `ups-mgmt.dc-tokyo-01.aiand.internal`. If the UPS has transferred to battery, note the estimated runtime.
+3. Check the UPS feeding the anomalous PDU path at `ups-mgmt.dc-tokyo-01.dc-internal.local`. If the UPS has transferred to battery, note the estimated runtime.
 4. Contact facilities-tokyo to check the upstream breaker panel and transformer.
 5. If the anomaly is on the utility feed (upstream of UPS), contact TEPCO liason at facilities-tokyo.
 
@@ -65,6 +65,6 @@ Emergency generator (2 MW diesel) has a 30-second auto-transfer switch (ATS). Un
 ## Escalation
 
 - **P2 (anomaly, redundancy intact):** dc-ops-tokyo on-call, investigate within 1 hour.
-- **P1 (power loss risk or UPS on battery):** Page dc-ops-tokyo lead, facilities-tokyo lead, and site manager. If generator fails, escalate to ai& executive on-call.
+- **P1 (power loss risk or UPS on battery):** Page dc-ops-tokyo lead, facilities-tokyo lead, and site manager. If generator fails, escalate to executive on-call.
 
 **Contact:** facilities-tokyo: +81-3-XXXX-4050 | Eaton support: eaton-ups-apac@eaton.com | TEPCO liason: via facilities-tokyo lead

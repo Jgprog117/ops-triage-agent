@@ -27,7 +27,7 @@ Alerts fire via Prometheus on `switch_interface_flap_count` exceeding 3 transiti
 
 ### 1. Identify the Flapping Port
 
-Check the network monitoring dashboard at `netmon.dc-tokyo-01.aiand.internal`. Identify the specific switch, port, and connected device. Correlate with recent change tickets (fiber moves, transceiver replacements).
+Check the network monitoring dashboard at `netmon.dc-tokyo-01.dc-internal.local`. Identify the specific switch, port, and connected device. Correlate with recent change tickets (fiber moves, transceiver replacements).
 
 ### 2. Check Physical Layer
 

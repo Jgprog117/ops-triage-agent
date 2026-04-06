@@ -10,7 +10,7 @@ Network partitions in dc-tokyo-01 primarily affect the high-speed InfiniBand fab
 
 Network partitions are detected through multiple signals:
 
-- **Automated monitoring:** The UFM (Unified Fabric Manager) dashboard at `https://ufm01.dc-tokyo-01.aiand.internal` reports link-down events and subnet topology changes within 30 seconds
+- **Automated monitoring:** The UFM (Unified Fabric Manager) dashboard at `https://ufm01.dc-tokyo-01.dc-internal.local` reports link-down events and subnet topology changes within 30 seconds
 - **NCCL alerts:** Multiple concurrent NCCL timeout failures across different jobs indicate a fabric-level issue rather than a single-node fault
 - **Heartbeat failures:** The Slurm health check daemon reports unreachable nodes via `scontrol show node | grep -c DOWN`
 - **Ping mesh:** The `netcheck` service runs a full mesh ICMP and RDMA connectivity test every 60 seconds across all compute nodes
