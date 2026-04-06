@@ -1,6 +1,6 @@
 # Ops Triage Agent
 
-An autonomous AI agent that monitors data center alerts, triages incidents, and escalates critical issues — replacing manual on-call toil with a tool-use loop that reasons, correlates, and acts in real time.
+An autonomous AI agent that monitors data center alerts, triages incidents, and escalates critical issues — replacing manual on-call  with a tool-use loop that reasons, correlates, and acts in real time.
 
 Internal AI tooling that keeps infrastructure teams focused on what matters: an agent that handles the repetitive alert noise so engineers can focus on the hard problems.
 
