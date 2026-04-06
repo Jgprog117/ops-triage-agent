@@ -106,7 +106,7 @@ async def _run_scenario() -> None:
 
     for i, step in enumerate(scenario.alerts):
         if i > 0:
-            await asyncio.sleep(step.delay_seconds)
+            await asyncio.sleep(max(step.delay_seconds, settings.ALERT_INTERVAL_MIN))
 
         alert = {
             "id": str(uuid.uuid4()),

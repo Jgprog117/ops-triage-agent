@@ -7,9 +7,9 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = "your-api-key-here"
     LLM_API_BASE: str = ""
     OPS_AGENT_API_KEY: str = "demo-key-change-me"
-    ALERT_INTERVAL_MIN: int = 8
-    ALERT_INTERVAL_MAX: int = 15
-    SCENARIO_PROBABILITY: float = 0.2
+    ALERT_INTERVAL_MIN: int = 90
+    ALERT_INTERVAL_MAX: int = 150
+    SCENARIO_PROBABILITY: float = 0.15
     DATABASE_PATH: str = "data/ops_agent.db"
     CHROMA_PATH: str = "data/chroma"
     WEBHOOK_URL: str = ""
