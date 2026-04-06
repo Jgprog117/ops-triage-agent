@@ -5,6 +5,7 @@ from backend.agent.parser import (
     parse_triage_result,
 )
 from backend.db.models import TriageResult
+from backend.exceptions import ParseError
 
 
 class TestParseToolArguments:
@@ -88,10 +89,12 @@ class TestParseTriageResult:
 
     def test_invalid_classification(self):
         text = '{"classification": "bogus", "summary": "s", "summary_ja": "s"}'
-        assert parse_triage_result(text) is None
+        with pytest.raises(ParseError):
+            parse_triage_result(text)
 
     def test_garbage_input(self):
-        assert parse_triage_result("not json at all") is None
+        with pytest.raises(ParseError):
+            parse_triage_result("not json at all")
 
     def test_in_code_fence(self):
         text = 'Here is my assessment:\n```json\n' + self.VALID_TRIAGE + '\n```'

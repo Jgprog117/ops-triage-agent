@@ -1,4 +1,8 @@
+from typing import ClassVar
+
 from pydantic_settings import BaseSettings
+
+from backend.exceptions import ConfigurationError
 
 
 class Settings(BaseSettings):
@@ -6,16 +10,39 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-sonnet-4-6-latest"
     LLM_API_KEY: str = "your-api-key-here"
     LLM_API_BASE: str = ""
+    LLM_TIMEOUT: int = 120
+    LLM_MAX_RETRIES: int = 5
     OPS_AGENT_API_KEY: str = "demo-key-change-me"
-    ALERT_INTERVAL_MIN: int = 90
-    ALERT_INTERVAL_MAX: int = 150
+    ALERT_INTERVAL_MIN: int = 60
+    ALERT_INTERVAL_MAX: int = 100
     SCENARIO_PROBABILITY: float = 0.15
     DATABASE_PATH: str = "data/ops_agent.db"
     CHROMA_PATH: str = "data/chroma"
     WEBHOOK_URL: str = ""
     WEBHOOK_SECRET: str = ""
+    WEBHOOK_MAX_RETRIES: int = 3
+    TRIAGE_MAX_STEPS: int = 8
+    TRIAGE_CONCURRENCY: int = 2
+    ALERT_QUERY_LIMIT: int = 20
+    DEFAULT_TEAM: str = "dc-ops-tokyo"
+    SSE_HISTORY_MAX_ALERTS: int = 500
+    SSE_HISTORY_TTL_SECONDS: int = 3600
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    UPDATABLE_FIELDS: ClassVar[dict[str, type]] = {
+        "ALERT_INTERVAL_MIN": int,
+        "ALERT_INTERVAL_MAX": int,
+        "SCENARIO_PROBABILITY": float,
+        "WEBHOOK_URL": str,
+        "WEBHOOK_SECRET": str,
+    }
+
+    def validate_required(self) -> None:
+        if self.LLM_API_KEY == "your-api-key-here":
+            raise ConfigurationError(
+                "LLM_API_KEY is not set (still using placeholder) — set it in .env or environment"
+            )
 
 
 settings = Settings()

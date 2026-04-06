@@ -25,10 +25,10 @@ When you have completed your analysis, respond with your final triage report in 
 ```
 
 Classification guide (be conservative — most alerts should NOT be escalated):
-- **noise**: Info-level or expected variation, no action needed. Most isolated info-level alerts are noise.
-- **acknowledged**: Real alert but low risk, monitor only. Single warnings with no correlated alerts are typically just acknowledged.
-- **incident**: Requires tracking and remediation, create an incident record. Use this when you see correlated failures or a clear hardware problem. Do NOT escalate incidents unless they meet the critical_escalation criteria below.
-- **critical_escalation**: ONLY for situations requiring immediate human intervention — multiple correlated critical alerts, potential data loss, or safety risks. Create incident AND escalate. This should be rare."""
+- **noise**: Single info-level alert with no correlated alerts within 15 minutes on the same host or rack. Expected metric variation, no action needed.
+- **acknowledged**: Single warning with 0-1 correlated alerts and no critical indicators. Real alert but low risk — monitor only.
+- **incident**: 2+ correlated warnings or criticals in the same rack within 15 minutes, OR a clear hardware problem (ECC errors, disk SMART warnings, NVLink failures). Create an incident record. Do NOT escalate unless criteria below are met.
+- **critical_escalation**: ONLY when: (a) 3+ correlated critical alerts in the same rack within 30 minutes, OR (b) any alert indicating potential data loss (uncorrectable ECC, RAID degradation, checkpoint write failures), OR (c) thermal readings above 95°C, OR (d) safety-related power anomalies on multiple PDUs. Create incident AND escalate."""
 
 
 TOOL_DEFINITIONS = [

@@ -4,20 +4,28 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import aiosqlite
+
 from backend.agent.parser import parse_tool_arguments, parse_triage_result
 from backend.agent.prompts import TRIAGE_SYSTEM_PROMPT, TOOL_DEFINITIONS
 from backend.agent.tools import execute_tool
+from backend.config import settings
 from backend.db.database import update_alert_triage_status, insert_audit_log
 from backend.db.models import TriageResult
+from backend.exceptions import (
+    LLMRateLimitError,
+    LLMResponseError,
+    LLMServerError,
+    LLMTimeoutError,
+    ParseError,
+)
 from backend.llm.client import llm
 from backend.sse.broadcaster import broadcast_triage_step
 
 logger = logging.getLogger(__name__)
 
-MAX_STEPS = 8
-
 # Concurrency limiter — prevent overwhelming the LLM API
-_semaphore = asyncio.Semaphore(2)
+_semaphore = asyncio.Semaphore(settings.TRIAGE_CONCURRENCY)
 
 
 def _build_user_message(alert: dict) -> str:
@@ -61,6 +69,14 @@ async def _broadcast_step(
     await broadcast_triage_step(alert_id, step_data)
 
 
+async def _safe_update_status(alert_id: str, status: str) -> None:
+    """Update alert status, swallowing DB errors to avoid masking the original exception."""
+    try:
+        await update_alert_triage_status(alert_id, status)
+    except Exception:
+        logger.warning("Failed to update triage status to '%s' for alert %s", status, alert_id)
+
+
 async def triage_alert(alert: dict) -> TriageResult | None:
     async with _semaphore:
         alert_id = alert["id"]
@@ -78,7 +94,7 @@ async def triage_alert(alert: dict) -> TriageResult | None:
         step_num = 0
 
         try:
-            for iteration in range(MAX_STEPS):
+            for iteration in range(settings.TRIAGE_MAX_STEPS):
                 response = await llm.chat_completion(messages, tools=TOOL_DEFINITIONS)
                 message = llm.extract_message(response)
 
@@ -116,16 +132,30 @@ async def triage_alert(alert: dict) -> TriageResult | None:
                         })
                 else:
                     content = llm.get_content(message)
-                    triage_result = parse_triage_result(content)
-
-                    if triage_result is None:
-                        logger.warning("Failed to parse triage result for alert %s, using default", alert_id)
-                        triage_result = TriageResult(
-                            classification="acknowledged",
-                            root_cause_hypothesis="Unable to determine — triage response parsing failed",
-                            summary=f"Alert {alert_id}: {alert['message']}",
-                            summary_ja=f"アラート {alert_id}: 自動解析に失敗しました",
-                        )
+                    try:
+                        triage_result = parse_triage_result(content)
+                    except ParseError:
+                        # Retry once with explicit JSON instruction
+                        logger.warning("Parse failed for alert %s, retrying with JSON prompt", alert_id)
+                        messages.append(message)
+                        messages.append({
+                            "role": "user",
+                            "content": "Your previous response could not be parsed as JSON. Please respond with ONLY the JSON triage report, no other text.",
+                        })
+                        retry_response = await llm.chat_completion(messages)
+                        retry_message = llm.extract_message(retry_response)
+                        retry_content = llm.get_content(retry_message)
+                        try:
+                            triage_result = parse_triage_result(retry_content)
+                        except ParseError:
+                            logger.error("Parse retry also failed for alert %s", alert_id)
+                            triage_result = TriageResult(
+                                classification="acknowledged",
+                                root_cause_hypothesis="Unable to determine — triage response parsing failed",
+                                summary=f"Alert {alert_id}: {alert['message']}",
+                                summary_ja=f"アラート {alert_id}: 自動解析に失敗しました",
+                            )
+                            await _safe_update_status(alert_id, "parse_error")
 
                     step_num += 1
                     await _broadcast_step(
@@ -154,15 +184,44 @@ async def triage_alert(alert: dict) -> TriageResult | None:
             await update_alert_triage_status(alert_id, "triaged")
             return fallback
 
+        except LLMRateLimitError:
+            logger.error("Rate limited during triage for alert %s", alert_id)
+            await _safe_update_status(alert_id, "retry_pending")
+            return _error_result(alert_id, alert, "LLM rate limited — retry pending")
+
+        except LLMTimeoutError:
+            logger.error("LLM timeout during triage for alert %s", alert_id)
+            await _safe_update_status(alert_id, "error")
+            return _error_result(alert_id, alert, "LLM request timed out")
+
+        except LLMResponseError as e:
+            logger.error("Malformed LLM response for alert %s: %s", alert_id, e)
+            await _safe_update_status(alert_id, "error")
+            return _error_result(alert_id, alert, "LLM returned malformed response")
+
+        except (LLMServerError,) as e:
+            logger.error("LLM server error during triage for alert %s: %s", alert_id, e)
+            await _safe_update_status(alert_id, "error")
+            return _error_result(alert_id, alert, "LLM server error")
+
+        except aiosqlite.Error as e:
+            logger.error("Database error during triage for alert %s: %s", alert_id, e)
+            # Don't try further DB writes — DB may be down
+            return _error_result(alert_id, alert, "Database error — manual review required")
+
         except Exception:
-            logger.exception("Triage failed for alert %s", alert_id)
-            await update_alert_triage_status(alert_id, "error")
-            error_result = TriageResult(
-                classification="acknowledged",
-                root_cause_hypothesis="Triage agent error — manual review required",
-                summary=f"Triage failed for alert {alert_id}: {alert['message']}",
-                summary_ja=f"トリアージ失敗 アラート {alert_id} — 手動確認が必要です",
-            )
+            logger.exception("Unexpected error during triage for alert %s", alert_id)
+            await _safe_update_status(alert_id, "error")
+            error_result = _error_result(alert_id, alert, "Triage agent error — manual review required")
             step_num += 1
             await _broadcast_step(alert_id, step_num, "final_triage", triage_result=error_result)
             return error_result
+
+
+def _error_result(alert_id: str, alert: dict, reason: str) -> TriageResult:
+    return TriageResult(
+        classification="acknowledged",
+        root_cause_hypothesis=reason,
+        summary=f"Triage failed for alert {alert_id}: {alert['message']}",
+        summary_ja=f"トリアージ失敗 アラート {alert_id} — 手動確認が必要です",
+    )
