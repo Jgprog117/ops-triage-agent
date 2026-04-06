@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     LLM_TIMEOUT: int = 120
     LLM_MAX_RETRIES: int = 5
     OPS_AGENT_API_KEY: str = "demo-key-change-me"
-    ALERT_INTERVAL_MIN: int = 90
-    ALERT_INTERVAL_MAX: int = 150
+    ALERT_INTERVAL_MIN: int = 60
+    ALERT_INTERVAL_MAX: int = 100
     SCENARIO_PROBABILITY: float = 0.15
     DATABASE_PATH: str = "data/ops_agent.db"
     CHROMA_PATH: str = "data/chroma"
