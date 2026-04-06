@@ -31,26 +31,6 @@ class LLMTimeoutError(LLMError):
     """LLM API call timed out after exhausting retries."""
 
 
-# -- Tool errors ---------------------------------------------------------------
-
-class ToolExecutionError(TriageAgentError):
-    """A tool call failed during triage.
-
-    severity: "transient" (retry may help), "degraded" (partial result),
-              "fatal" (unrecoverable — bad data, DB down, bug).
-    """
-
-    def __init__(self, message: str, severity: str = "transient"):
-        super().__init__(message)
-        self.severity = severity
-
-
-# -- Webhook errors ------------------------------------------------------------
-
-class WebhookDeliveryError(TriageAgentError):
-    """Webhook delivery failed after all retry attempts."""
-
-
 # -- Config errors -------------------------------------------------------------
 
 class ConfigurationError(TriageAgentError):
