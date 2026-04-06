@@ -9,17 +9,10 @@ class TestConfigValidation:
         with pytest.raises(ConfigurationError, match="LLM_API_KEY"):
             s.validate_required()
 
-    def test_validate_required_raises_on_demo_api_key(self):
+    def test_demo_api_key_does_not_raise(self):
+        """OPS_AGENT_API_KEY with demo default is a warning, not an error."""
         s = Settings(LLM_API_KEY="real-key", OPS_AGENT_API_KEY="demo-key-change-me")
-        with pytest.raises(ConfigurationError, match="OPS_AGENT_API_KEY"):
-            s.validate_required()
-
-    def test_validate_required_raises_both(self):
-        s = Settings(LLM_API_KEY="your-api-key-here", OPS_AGENT_API_KEY="demo-key-change-me")
-        with pytest.raises(ConfigurationError) as exc_info:
-            s.validate_required()
-        assert "LLM_API_KEY" in str(exc_info.value)
-        assert "OPS_AGENT_API_KEY" in str(exc_info.value)
+        s.validate_required()  # should not raise
 
     def test_validate_required_passes_with_real_keys(self):
         s = Settings(LLM_API_KEY="sk-real-key", OPS_AGENT_API_KEY="prod-api-key-123")

@@ -36,10 +36,10 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Ops Triage Agent...")
 
     # Validate configuration before anything else
-    try:
-        settings.validate_required()
-    except Exception as e:
-        logger.warning("Configuration warning: %s", e)
+    settings.validate_required()
+
+    if settings.OPS_AGENT_API_KEY == "demo-key-change-me":
+        logger.warning("OPS_AGENT_API_KEY is using the demo default — change it for production")
 
     await init_database()
     await seed_host_data()

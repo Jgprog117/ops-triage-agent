@@ -39,14 +39,9 @@ class Settings(BaseSettings):
     }
 
     def validate_required(self) -> None:
-        errors: list[str] = []
         if self.LLM_API_KEY == "your-api-key-here":
-            errors.append("LLM_API_KEY is not set (still using placeholder)")
-        if self.OPS_AGENT_API_KEY == "demo-key-change-me":
-            errors.append("OPS_AGENT_API_KEY is not set (still using demo default)")
-        if errors:
             raise ConfigurationError(
-                "Invalid configuration — set these in .env or environment:\n  • " + "\n  • ".join(errors)
+                "LLM_API_KEY is not set (still using placeholder) — set it in .env or environment"
             )
 
 
