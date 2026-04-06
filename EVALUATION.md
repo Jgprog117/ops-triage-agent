@@ -4,63 +4,28 @@
 
 Each triage is assessed on three dimensions:
 
-- **Classification**: Did the agent pick the right category? (noise / acknowledged / incident / critical_escalation)
-- **Correlation**: Did the agent find related alerts from the same scenario?
-- **Escalation decision**: Did the agent escalate when it should, and not when it shouldn't?
+- **Classification** — Did the agent pick the right category?
+- **Correlation** — Did it find related alerts from the same scenario?
+- **Escalation** — Did it escalate when appropriate, and not when it shouldn't?
 
-## Ground Truth per Scenario
+## Expected behavior per scenario
 
-| Scenario | Expected Classification | Should Correlate | Should Escalate | Expected Team |
-|---|---|---|---|---|
-| thermal_cascade | critical_escalation | 3-4 alerts (same rack, thermal + gpu) | Yes | dc-ops-tokyo |
-| gpu_hardware_failure | critical_escalation | 3-4 alerts (same host, gpu) | Yes | gpu-infra |
-| network_partition | critical_escalation | 3-4 alerts (same rack, network + gpu) | Yes | network-ops |
-| storage_degradation | incident | 2-4 alerts (storage category) | Maybe | storage-team |
-| power_anomaly | incident or acknowledged | 2-4 alerts (same rack, power) | No (self-recovers) | power-facilities |
-| isolated (info) | noise | 0 | No | - |
-| isolated (warning) | acknowledged | 0-1 | No | - |
-| isolated (critical) | incident | 0-1 | Maybe | varies |
+| Scenario | Expected class. | Should correlate | Escalate? |
+|---|---|---|---|
+| thermal_cascade | critical_escalation | 3-4 alerts | Yes |
+| gpu_hardware_failure | critical_escalation | 3-4 alerts | Yes |
+| network_partition | critical_escalation | 3-4 alerts | Yes |
+| storage_degradation | incident | 2-4 alerts | Maybe |
+| power_anomaly | acknowledged | 2-4 alerts | No (recovers) |
+| isolated info | noise | 0 | No |
+| isolated warning | acknowledged | 0-1 | No |
 
 ## Results
 
-> Run the system (`uvicorn backend.main:app --port 8000`) and observe 15-20 triage cycles. Record results below.
+> Run the system and observe 10-15 triage cycles. Record each result and compare against the expected behavior above.
 
-| # | Scenario | Alert Severity | Expected Class. | Actual Class. | Correlated? | Escalated? | Correct? | Notes |
-|---|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | | |
-| 2 | | | | | | | | |
-| 3 | | | | | | | | |
-| 4 | | | | | | | | |
-| 5 | | | | | | | | |
-| 6 | | | | | | | | |
-| 7 | | | | | | | | |
-| 8 | | | | | | | | |
-| 9 | | | | | | | | |
-| 10 | | | | | | | | |
-| 11 | | | | | | | | |
-| 12 | | | | | | | | |
-| 13 | | | | | | | | |
-| 14 | | | | | | | | |
-| 15 | | | | | | | | |
+## Improvement ideas
 
-## Analysis
-
-**Classification accuracy**: _/15 correct (_%)
-
-**Correlation accuracy**: _/_ scenarios correctly correlated
-
-**Escalation accuracy**: _/_ correct escalation decisions
-
-### Common Failure Modes
-
-_Fill in after running:_
-- Does the agent over-escalate isolated warnings?
-- Does it miss cross-category correlations (e.g., thermal + gpu in thermal_cascade)?
-- Does it correctly identify self-recovering scenarios (power_anomaly)?
-
-### What Would Improve Accuracy
-
-- Few-shot examples in the system prompt
-- Structured output mode (response_format) to eliminate parsing failures
-- Explicit correlation scoring in the prompt
-- Runbook-specific triage templates per category
+- Few-shot examples in the system prompt for each classification level
+- Structured output mode (`response_format`) to eliminate parsing failures
+- Runbook-specific triage templates per alert category

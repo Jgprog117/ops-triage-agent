@@ -1,231 +1,99 @@
-# Ops Triage Agent — Data Center Incident Triage
+# Ops Triage Agent
 
-An AI-powered operations agent that monitors data center alerts, performs automated incident triage, and provides intelligent escalation — built to demonstrate how agentic AI workflows can make infrastructure teams more productive.
+An autonomous agent that monitors data center alerts, triages incidents, and escalates critical issues — with full reasoning traces streamed to a live dashboard.
 
-## What it does
-
-- **Real-time alert monitoring** — Simulates a live data center alert stream with correlated failure scenarios (thermal cascades, GPU failures, network partitions, storage degradation, power anomalies)
-- **Autonomous triage agent** — An AI agent that classifies alerts, correlates related events, consults operational runbooks, creates incident reports, and escalates critical issues — all autonomously with full reasoning traces
-- **Knowledge base Q&A** — RAG-powered search over 14 data center operations runbooks
-- **Full observability** — Live agent reasoning traces via SSE, audit logging, incident tracking
-- **Bilingual output** — Triage summaries generated in both English and Japanese (日本語)
+![Architecture](docs/architecture.svg)
 
 ## Quick start
 
 ```bash
-git clone https://github.com/Jgprog117/ops-triage-agent.git
-cd ops-triage-agent
 cp .env.example .env
-# Add your LLM API key to .env
-docker compose up
+# Set LLM_PROVIDER, LLM_MODEL, and LLM_API_KEY in .env
+docker compose up --build
 # Open http://localhost:3000
 ```
 
-Within 60 seconds you'll see live alerts streaming in, being triaged by the AI agent in real time.
-
-## Model-agnostic by design
-
-This system integrates with **any** LLM inference endpoint. Your own models can be plugged in by changing a single environment variable:
+Or without Docker:
 
 ```bash
-# Custom inference endpoint
-LLM_MODEL=your-model-name
-LLM_API_BASE=https://your-inference-endpoint.example.com/v1
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env
+uvicorn backend.main:app --port 8000
 ```
 
-The LLM client is a minimal OpenAI-compatible wrapper with **zero third-party LLM SDK dependencies**. This is a deliberate architectural choice — lightweight dependencies reduce supply chain attack surface (see: LiteLLM PyPI compromise, March 2026), which is critical for internal tooling that handles infrastructure credentials. Any OpenAI-compatible endpoint works out of the box, including:
+### LLM providers
 
-- OpenAI API
-- Ollama (local models)
-- vLLM / TGI self-hosted endpoints
-- Any OpenAI-compatible proxy
+Set `LLM_PROVIDER` in `.env`:
 
-## Architecture
+```bash
+# Anthropic
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-sonnet-4-20250514
+LLM_API_KEY=sk-ant-...
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Browser (localhost:3000)               │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
-│  │  Live Alert  │  │   Triage     │  │   Knowledge    │  │
-│  │  Feed + SSE  │  │   Detail +   │  │   Base Q&A     │  │
-│  │              │  │   Agent Trace│  │   (RAG Chat)   │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────┬────────┘  │
-└─────────┼────────────────┼──────────────────┼────────────┘
-          │ SSE            │ SSE/REST         │ REST
-          ▼                ▼                  ▼
-┌─────────────────────────────────────────────────────────┐
-│                  FastAPI Backend (:8000)                  │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Alert       │  │  Triage      │  │  Knowledge    │  │
-│  │  Simulator   │  │  Agent       │  │  Base (RAG)   │  │
-│  │  (asyncio)   │  │  (tool-use)  │  │  (ChromaDB)   │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘  │
-│         │                 │                   │          │
-│         ▼                 ▼                   ▼          │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │              SQLite Database                     │    │
-│  │  alerts | incidents | escalations | audit_log   │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                          │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │         Minimal OpenAI-Compatible Client         │    │
-│  │  (zero LLM SDK deps — configure any endpoint)   │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
+# OpenAI
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+LLM_API_KEY=sk-...
+
+# Local (Ollama)
+LLM_PROVIDER=openai
+LLM_MODEL=llama3.2
+LLM_API_BASE=http://localhost:11434/v1
+LLM_API_KEY=
 ```
 
-Single Docker container. Everything runs in one process.
+## How the agent works
 
-## Agent tool-use flow
+![Agent flow](docs/agent-flow.svg)
 
-The triage agent operates in an iterative tool-use loop:
+The triage agent runs a tool-use loop: it receives an alert, gathers context by calling tools (query correlated alerts, look up host info, search runbooks), then decides on a classification and next steps. Each step is streamed to the dashboard in real time via SSE.
 
-1. **Receive alert** → Parse severity, category, component, metric data
-2. **Query correlated alerts** → Search recent alerts on the same rack/host/category to detect cascading failures
-3. **Look up host info** → Get hardware specs, status, and incident history
-4. **Search runbooks** → Vector search over operational knowledge base for relevant procedures
-5. **Classify and decide** → Determine if the alert is noise, requires acknowledgment, warrants an incident, or needs critical escalation
-6. **Create incident** → If warranted, create a formal incident record with root cause and remediation steps
-7. **Escalate** → If critical, trigger escalation via the appropriate channels
+**Tools available to the agent:**
 
-Each step is streamed in real time to the frontend via SSE, creating a live reasoning trace.
+| Tool | Purpose |
+|------|---------|
+| `query_recent_alerts` | Find correlated alerts by rack, host, category |
+| `get_host_info` | Hardware specs, status, incident history |
+| `search_runbooks` | RAG search over 14 operational runbooks |
+| `create_incident` | Create a tracked incident record |
+| `escalate` | Escalate to on-call with webhook notification |
 
-## Correlated failure scenarios
+**Classifications:** noise, acknowledged, incident, critical_escalation
 
-The simulator generates 5 realistic multi-step failure scenarios:
+## Simulated failure scenarios
 
-| Scenario | Alerts | Description |
-|----------|--------|-------------|
-| Thermal Cascade | 4 | CRAC failure → GPU throttling → training degradation |
-| GPU Hardware Failure | 4 | ECC errors → GPU lost → NVLink errors → node unhealthy |
-| Network Partition | 4 | Switch flapping → packet loss → nodes unreachable → training stalled |
-| Storage Degradation | 4 | SMART warnings → I/O latency → checkpoint write failure |
-| Power Anomaly | 4 | Voltage fluctuation → UPS engagement → load shedding → recovery |
+The alert simulator generates 5 realistic multi-step failure patterns:
 
-The agent must determine which alerts are correlated — this is what makes the triage interesting.
+- **Thermal cascade** — CRAC failure triggers GPU throttling and training degradation
+- **GPU hardware failure** — ECC errors escalate to NVLink failures and node drain
+- **Network partition** — Switch flapping causes packet loss and training stalls
+- **Storage degradation** — SMART warnings lead to checkpoint write failures
+- **Power anomaly** — Voltage fluctuation triggers UPS engagement and load shedding
 
-## Why this exists
-
-Organizations operating AI data centers face complex, high-stakes infrastructure challenges. This project demonstrates how an agentic AI workflow can:
-
-1. **Reduce mean time to triage** for data center incidents
-2. **Ensure consistent, runbook-compliant** incident response across shifts
-3. **Surface correlated failure patterns** that human operators might miss during alert storms
-4. **Provide institutional knowledge access** through natural language Q&A over operational runbooks
-
-This is the kind of internal tooling the Applied AI Engineer role would build — AI that makes every ops team member more effective, regardless of their experience level.
-
-## Development process
-
-This project was scaffolded with AI assistance and then hardened through manual engineering review:
-
-- **Architecture**: Model-agnostic LLM client with zero SDK dependencies, async-first design, single-container deployment
-- **Bug hardening**: Identified and fixed 10 bugs through code review — timestamp format mismatches, event-loop blocking, connection lifecycle, data consistency, and state management issues
-- **Test coverage**: 62 unit tests covering parsers, Pydantic models, scenario structure validation, RAG chunking, and LLM client utilities
-- **Evaluation**: Systematic accuracy framework for triage agent across all 5 scenario types (see [EVALUATION.md](./EVALUATION.md))
-- **Real integration**: HMAC-signed outgoing webhook on escalation events
-
-Using AI as a force multiplier for rapid prototyping — then applying engineering judgment to harden the result — is the workflow this role calls for.
-
-## Tech stack
-
-| Component | Technology |
-|-----------|-----------|
-| Backend | Python, FastAPI, asyncio |
-| LLM Integration | Custom OpenAI-compatible client (zero LLM SDK dependencies) |
-| Agent | Hand-rolled tool-use loop (no framework dependencies) |
-| Knowledge Base | ChromaDB + sentence-transformers (all-MiniLM-L6-v2) |
-| Database | SQLite via aiosqlite |
-| Frontend | HTML + Tailwind CSS + vanilla JavaScript |
-| Deployment | Docker Compose (single container) |
-
-## Project structure
-
-```
-ops-triage-agent/
-├── README.md
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── .env.example
-├── backend/
-│   ├── main.py              # FastAPI app, lifespan, route mounting
-│   ├── config.py            # Settings from .env via pydantic-settings
-│   ├── auth.py              # API key middleware
-│   ├── db/
-│   │   ├── database.py      # SQLite connection, schema, CRUD operations
-│   │   ├── models.py        # Pydantic models for all entities
-│   │   └── seed.py          # Seed hosts table with sample data
-│   ├── simulator/
-│   │   ├── engine.py        # Alert generation loop
-│   │   ├── scenarios.py     # 5 correlated failure scenario definitions
-│   │   └── components.py    # DC component definitions (hosts, racks, GPUs)
-│   ├── agent/
-│   │   ├── triage.py        # Main agent loop with step broadcasting
-│   │   ├── tools.py         # Tool definitions and implementations
-│   │   ├── prompts.py       # System prompts and tool schemas
-│   │   └── parser.py        # Response parsing (tool calls, triage result)
-│   ├── knowledge/
-│   │   ├── rag.py           # ChromaDB setup, embed, search
-│   │   ├── qa.py            # RAG Q&A endpoint logic
-│   │   └── runbooks/        # 14 operational runbook documents
-│   ├── llm/
-│   │   └── client.py        # Minimal OpenAI-compatible client
-│   ├── routes/
-│   │   ├── alerts.py        # Alert endpoints
-│   │   ├── incidents.py     # Incident endpoints
-│   │   ├── knowledge.py     # RAG Q&A endpoint
-│   │   ├── stream.py        # SSE streaming endpoints
-│   │   ├── stats.py         # Dashboard stats
-│   │   └── config.py        # Config read/update
-│   └── sse/
-│       └── broadcaster.py   # SSE pub/sub for alerts and agent steps
-├── frontend/
-│   └── index.html           # Single-file dashboard
-└── data/                    # Created at runtime (gitignored)
-```
+The agent must determine which alerts are correlated across these scenarios.
 
 ## Configuration
 
+See [`.env.example`](.env.example) for all options. Key settings:
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_MODEL` | `gpt-4o-mini` | Model name for the LLM endpoint |
-| `LLM_API_KEY` | — | API key for the LLM endpoint |
-| `LLM_API_BASE` | `https://api.openai.com/v1` | Base URL for the LLM API |
-| `OPS_AGENT_API_KEY` | `demo-key-change-me` | API key for write endpoints |
-| `ALERT_INTERVAL_MIN` | `3` | Minimum seconds between alerts |
-| `ALERT_INTERVAL_MAX` | `8` | Maximum seconds between alerts |
-| `SCENARIO_PROBABILITY` | `0.3` | Probability of correlated scenario vs isolated alert |
-| `DATABASE_PATH` | `data/ops_agent.db` | SQLite database file path |
-| `CHROMA_PATH` | `data/chroma` | ChromaDB persistence directory |
+| `LLM_PROVIDER` | `openai` | `openai` or `anthropic` |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name |
+| `ALERT_INTERVAL_MIN` | `90` | Min seconds between alerts |
+| `WEBHOOK_URL` | — | Outgoing webhook for escalations (HMAC-signed) |
 
-## API endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Serve frontend dashboard |
-| `GET` | `/api/stream/alerts` | SSE stream of live alerts |
-| `GET` | `/api/stream/triage/{id}` | SSE stream of agent triage steps |
-| `GET` | `/api/alerts` | List alerts (paginated, filterable) |
-| `GET` | `/api/alerts/{id}` | Alert detail + triage history |
-| `GET` | `/api/incidents` | List incidents |
-| `GET` | `/api/incidents/{id}` | Incident detail |
-| `GET` | `/api/escalations` | List escalations |
-| `POST` | `/api/knowledge/ask` | RAG Q&A endpoint |
-| `GET` | `/api/stats` | Dashboard statistics |
-| `GET` | `/api/config` | Current configuration |
-| `POST` | `/api/config` | Update configuration (requires API key) |
-| `GET` | `/health` | Health check |
-
-## Local development (without Docker)
+## Testing
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env with your API key
-uvicorn backend.main:app --reload --port 8000
-# Open http://localhost:8000
+python -m pytest tests/ -v
 ```
+
+68 tests covering the parser, Pydantic models, scenario structure, RAG chunking, and LLM client (including Anthropic format conversion).
+
+## Development process
+
+This project was scaffolded with AI assistance and then hardened through manual engineering review — 10 bug fixes, 68 unit tests, evaluation framework, and webhook integration. See [EVALUATION.md](EVALUATION.md) for the triage accuracy assessment framework.

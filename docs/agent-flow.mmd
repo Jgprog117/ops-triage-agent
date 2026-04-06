@@ -1,0 +1,15 @@
+flowchart TD
+    A[New Alert] --> B{Severity?}
+    B -->|info| Z[Skip triage]
+    B -->|warning / critical| C[Start triage agent]
+    C --> D[Query correlated alerts]
+    D --> E[Look up host info]
+    E --> F[Search runbooks]
+    F --> G{Assessment}
+    G -->|low risk| H[Classify: noise / acknowledged]
+    G -->|needs tracking| I[Create incident]
+    G -->|critical, multi-alert| J[Create incident + escalate]
+    I --> K[Return triage result]
+    J --> K
+    H --> K
+    K --> L[Stream result to dashboard]

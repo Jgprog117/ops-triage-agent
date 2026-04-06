@@ -1,0 +1,24 @@
+graph LR
+    subgraph Browser
+        UI[Dashboard]
+    end
+
+    subgraph Backend["FastAPI Backend"]
+        SIM[Alert Simulator]
+        AGT[Triage Agent]
+        RAG[Knowledge Base<br/>ChromaDB + RAG]
+        DB[(SQLite)]
+        SSE[SSE Broadcaster]
+    end
+
+    LLM[LLM API<br/>OpenAI / Anthropic]
+
+    SIM -->|new alerts| SSE
+    SIM -->|warning/critical| AGT
+    AGT -->|tool calls| DB
+    AGT -->|search| RAG
+    AGT <-->|chat completion| LLM
+    AGT -->|triage steps| SSE
+    SSE -->|real-time stream| UI
+    UI -->|Q&A queries| RAG
+    RAG <-->|embeddings + answers| LLM
