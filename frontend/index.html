@@ -198,7 +198,10 @@ function updateAlertTriageStatus(alertId, step) {
         const cls = step.triage_result.classification;
         if (badge) badge.innerHTML = `<span class="px-1.5 py-px rounded ${clsStyle[cls] || ''}">${cls.replace('_', ' ')}</span>`;
     } else if (step.type === 'tool_call') {
-        if (badge && !cache.complete) badge.innerHTML = '<span class="text-blue-400">triaging</span>';
+        if (badge && !cache.complete) {
+            const activity = describeToolCallShort(step.tool_name);
+            badge.innerHTML = `<span class="text-blue-400">${esc(activity)}</span>`;
+        }
     }
 
     if (state.selectedAlertId === alertId) {
@@ -367,12 +370,16 @@ function renderTriageResult(r) {
         }
     }
 
+    const agentSummary = buildAgentSummary(cache);
+
     container.innerHTML = `
         <div class="bg-card border border-border rounded-lg p-4 fade-in">
-            <div class="flex items-center gap-2 mb-3">
+            <div class="flex items-center gap-2 mb-2">
                 <span class="text-[11px] font-medium px-2 py-0.5 rounded ${style}">${cls.replace('_', ' ')}</span>
                 ${r.escalation_required ? '<span class="text-[11px] font-medium px-2 py-0.5 rounded bg-red-900/30 text-red-400">escalated</span>' : ''}
             </div>
+
+            ${agentSummary ? `<p class="text-[11px] text-fg-faint mb-2">${agentSummary}</p>` : ''}
 
             <p class="text-[13px] text-fg-muted leading-relaxed mb-3">${esc(r.summary)}</p>
 
@@ -418,6 +425,49 @@ function renderTriageResult(r) {
             </div>
         </div>
     `;
+}
+
+function buildAgentSummary(cache) {
+    if (!cache?.steps.length) return '';
+    const toolCalls = cache.steps.filter(s => s.type === 'tool_call');
+    if (!toolCalls.length) return '';
+
+    const counts = {};
+    for (const s of toolCalls) counts[s.tool_name] = (counts[s.tool_name] || 0) + 1;
+
+    const parts = [];
+
+    const alertChecks = counts.query_recent_alerts || 0;
+    if (alertChecks) {
+        // Try to find how many alerts were found from the result
+        const resultStep = cache.steps.find(s => s.type === 'tool_result' && s.tool_name === 'query_recent_alerts');
+        let found = '';
+        if (resultStep) {
+            try {
+                const d = typeof resultStep.tool_output === 'string' ? JSON.parse(resultStep.tool_output) : resultStep.tool_output;
+                if (d.count !== undefined) found = `, found ${d.count}`;
+            } catch {}
+        }
+        parts.push(`checked correlated alerts${found}`);
+    }
+    if (counts.get_host_info) parts.push(`looked up ${counts.get_host_info} host${counts.get_host_info > 1 ? 's' : ''}`);
+    if (counts.search_runbooks) parts.push(`consulted ${counts.search_runbooks} runbook search${counts.search_runbooks > 1 ? 'es' : ''}`);
+    if (counts.create_incident) parts.push('created an incident');
+    if (counts.escalate) parts.push('escalated to on-call team');
+
+    if (!parts.length) return '';
+    return `Agent ${parts.join(', ')} in ${toolCalls.length} steps.`;
+}
+
+function describeToolCallShort(name) {
+    switch (name) {
+        case 'query_recent_alerts': return 'checking alerts...';
+        case 'search_runbooks': return 'reading runbooks...';
+        case 'get_host_info': return 'looking up host...';
+        case 'create_incident': return 'creating incident...';
+        case 'escalate': return 'escalating...';
+        default: return 'thinking...';
+    }
 }
 
 function describeToolCall(name, input) {
