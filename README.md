@@ -32,19 +32,14 @@ Set `LLM_PROVIDER` in `.env`:
 ```bash
 # Anthropic
 LLM_PROVIDER=anthropic
-LLM_MODEL=claude-sonnet-4-20250514
+LLM_MODEL=claude-sonnet-4-6-latest
 LLM_API_KEY=sk-ant-...
 
 # OpenAI
 LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=gpt-4.1-mini
 LLM_API_KEY=sk-...
 
-# Local (Ollama)
-LLM_PROVIDER=openai
-LLM_MODEL=llama3.2
-LLM_API_BASE=http://localhost:11434/v1
-LLM_API_KEY=
 ```
 
 ## How the agent works
@@ -83,8 +78,8 @@ See [`.env.example`](.env.example) for all options. Key settings:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `openai` | `openai` or `anthropic` |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name |
+| `LLM_PROVIDER` | `anthropic` | `anthropic` or `openai` |
+| `LLM_MODEL` | `claude-sonnet-4-6-latest` | Model name |
 | `ALERT_INTERVAL_MIN` | `90` | Min seconds between alerts |
 | `WEBHOOK_URL` | — | Outgoing webhook for escalations (HMAC-signed) |
 

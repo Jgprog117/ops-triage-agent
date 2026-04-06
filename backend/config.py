@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    LLM_PROVIDER: str = "openai"  # "openai" or "anthropic"
-    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_PROVIDER: str = "anthropic"  # "anthropic" or "openai"
+    LLM_MODEL: str = "claude-sonnet-4-6-latest"
     LLM_API_KEY: str = "your-api-key-here"
     LLM_API_BASE: str = ""
     OPS_AGENT_API_KEY: str = "demo-key-change-me"
