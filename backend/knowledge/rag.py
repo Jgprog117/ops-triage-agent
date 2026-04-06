@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+import shutil
+
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -70,12 +72,23 @@ def init_knowledge_base() -> None:
         model_name="all-MiniLM-L6-v2",
     )
 
-    _client = chromadb.PersistentClient(path=str(chroma_path))
-    _collection = _client.get_or_create_collection(
-        name="runbooks",
-        embedding_function=embedding_fn,
-        metadata={"hnsw:space": "cosine"},
-    )
+    try:
+        _client = chromadb.PersistentClient(path=str(chroma_path))
+        _collection = _client.get_or_create_collection(
+            name="runbooks",
+            embedding_function=embedding_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
+    except Exception:
+        logger.warning("ChromaDB data incompatible, rebuilding from scratch")
+        shutil.rmtree(chroma_path)
+        chroma_path.mkdir(parents=True, exist_ok=True)
+        _client = chromadb.PersistentClient(path=str(chroma_path))
+        _collection = _client.get_or_create_collection(
+            name="runbooks",
+            embedding_function=embedding_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
 
     if _collection.count() > 0:
         logger.info("Knowledge base already loaded (%d chunks)", _collection.count())
