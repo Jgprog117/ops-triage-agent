@@ -17,18 +17,18 @@
   @keyframes dot5 { 0%,46%{fill:#101014;stroke:#3f3f46} 48%,54%{fill:#2563eb;stroke:#2563eb} 58%,90%{fill:#22c55e;stroke:#22c55e} 94%,100%{fill:#101014;stroke:#3f3f46} }
   @keyframes dot6 { 0%,58%{fill:#101014;stroke:#3f3f46} 62%,90%{fill:#dc2626;stroke:#dc2626} 94%,100%{fill:#101014;stroke:#3f3f46} }
   @keyframes rail { 0%,2%{stroke-dashoffset:370} 60%,90%{stroke-dashoffset:0} 94%,100%{stroke-dashoffset:370} }
-  .s1{animation:show1 10s infinite}.s2{animation:show2 10s infinite}.s3{animation:show3 10s infinite}
-  .s4{animation:show4 10s infinite}.s5{animation:show5 10s infinite}.s6{animation:show6 10s infinite}
-  .r2{animation:sub2 10s infinite}.r3{animation:sub3 10s infinite}.r4{animation:sub4 10s infinite}.r5{animation:sub5 10s infinite}
-  .d1{animation:dot1 10s infinite}.d2{animation:dot2 10s infinite}.d3{animation:dot3 10s infinite}
-  .d4{animation:dot4 10s infinite}.d5{animation:dot5 10s infinite}.d6{animation:dot6 10s infinite}
+  .s1{animation:show1 13s infinite}.s2{animation:show2 13s infinite}.s3{animation:show3 13s infinite}
+  .s4{animation:show4 13s infinite}.s5{animation:show5 13s infinite}.s6{animation:show6 13s infinite}
+  .r2{animation:sub2 13s infinite}.r3{animation:sub3 13s infinite}.r4{animation:sub4 13s infinite}.r5{animation:sub5 13s infinite}
+  .d1{animation:dot1 13s infinite}.d2{animation:dot2 13s infinite}.d3{animation:dot3 13s infinite}
+  .d4{animation:dot4 13s infinite}.d5{animation:dot5 13s infinite}.d6{animation:dot6 13s infinite}
 </style>
 
 <rect width="520" height="420" fill="#101014" rx="8"/>
 
 <!-- Rail -->
 <line x1="32" y1="25" x2="32" y2="395" stroke="#2e2e33" stroke-width="1" opacity="0.3"/>
-<line x1="32" y1="25" x2="32" y2="395" stroke="#2563eb" stroke-width="1.5" opacity="0.6" stroke-dasharray="370" stroke-dashoffset="370" style="animation:rail 10s infinite"/>
+<line x1="32" y1="25" x2="32" y2="395" stroke="#2563eb" stroke-width="1.5" opacity="0.6" stroke-dasharray="370" stroke-dashoffset="370" style="animation:rail 13s infinite"/>
 
 <!-- Step 1 -->
 <circle cx="32" cy="30" r="5" fill="#101014" stroke="#3f3f46" stroke-width="2" class="d1"/>
