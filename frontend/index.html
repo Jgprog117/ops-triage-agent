@@ -66,6 +66,15 @@
                     <span id="stat-p1" class="text-red-soft font-medium hidden"></span>
                 </div>
             </div>
+            <div id="escalation-panel" class="hidden border-b border-border">
+                <div class="px-3 py-2 bg-red-950/20">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[11px] font-medium text-red-400">Escalations</span>
+                        <span class="text-[10px] text-red-400/60" id="escalation-count"></span>
+                    </div>
+                    <div id="escalation-list" class="space-y-1 max-h-32 overflow-y-auto scrollbar-thin"></div>
+                </div>
+            </div>
             <div id="alert-feed" class="flex-1 overflow-y-auto scrollbar-thin p-1.5 space-y-px">
                 <div class="text-center text-fg-faint text-xs py-12">Waiting for alerts...</div>
             </div>
@@ -112,6 +121,7 @@ const state = {
     triageSource: null,
     connected: false,
     triageCache: {},
+    escalations: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -197,6 +207,9 @@ function updateAlertTriageStatus(alertId, step) {
         cache.complete = true;
         const cls = step.triage_result.classification;
         if (badge) badge.innerHTML = `<span class="px-1.5 py-px rounded ${clsStyle[cls] || ''}">${cls.replace('_', ' ')}</span>`;
+        if (step.triage_result.escalation_required) {
+            trackEscalation(alertId, step.triage_result, cache);
+        }
     } else if (step.type === 'tool_call') {
         if (badge && !cache.complete) {
             const activity = describeToolCallShort(step.tool_name);
@@ -338,6 +351,9 @@ function renderTriageStep(step) {
         renderTriageResult(step.triage_result);
         const details = $('reasoning-details');
         if (details) details.removeAttribute('open');
+        // Scroll to top so the result is visible
+        const panel = $('triage-detail');
+        if (panel) panel.scrollTop = 0;
         return;
     }
 
@@ -425,6 +441,70 @@ function renderTriageResult(r) {
             </div>
         </div>
     `;
+}
+
+function trackEscalation(alertId, triageResult, cache) {
+    if (state.escalations.find(e => e.alertId === alertId)) return;
+
+    const alert = state.alerts.find(a => a.id === alertId);
+    let incidentId = null, team = null, urgency = null, channels = null;
+
+    if (cache) {
+        const escStep = cache.steps.find(s => s.type === 'tool_result' && s.tool_name === 'escalate');
+        if (escStep) {
+            try {
+                const d = typeof escStep.tool_output === 'string' ? JSON.parse(escStep.tool_output) : escStep.tool_output;
+                incidentId = d.incident_id; urgency = d.urgency; channels = d.notification_channels;
+            } catch {}
+        }
+        const incStep = cache.steps.find(s => s.type === 'tool_result' && s.tool_name === 'create_incident');
+        if (incStep) {
+            try {
+                const d = typeof incStep.tool_output === 'string' ? JSON.parse(incStep.tool_output) : incStep.tool_output;
+                if (!incidentId) incidentId = d.incident_id;
+                if (!team) team = d.assigned_team;
+            } catch {}
+        }
+    }
+
+    state.escalations.unshift({
+        alertId,
+        message: alert?.message || alertId.slice(0, 8),
+        reason: triageResult.escalation_reason || triageResult.summary,
+        incidentId, team, urgency, channels,
+        time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+    });
+
+    renderEscalationPanel();
+}
+
+function renderEscalationPanel() {
+    const panel = $('escalation-panel');
+    const list = $('escalation-list');
+    const count = $('escalation-count');
+    if (!panel || !list) return;
+
+    if (state.escalations.length === 0) {
+        panel.classList.add('hidden');
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    count.textContent = `${state.escalations.length}`;
+
+    list.innerHTML = state.escalations.map(e => `
+        <div class="bg-red-950/30 rounded px-2 py-1.5 cursor-pointer hover:bg-red-950/50 transition-colors text-[11px]" onclick="selectAlert('${e.alertId}')">
+            <div class="flex items-center justify-between mb-0.5">
+                <span class="text-red-300 truncate flex-1">${esc((e.message || '').slice(0, 50))}</span>
+                <span class="text-red-400/50 ml-2 flex-shrink-0">${e.time}</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] text-red-400/60">
+                ${e.incidentId ? `<span class="mono">${e.incidentId}</span>` : ''}
+                ${e.team ? `<span>${e.team}</span>` : ''}
+                ${e.urgency ? `<span>${e.urgency.replace('_', ' ')}</span>` : ''}
+            </div>
+        </div>
+    `).join('');
 }
 
 function buildAgentSummary(cache) {

@@ -24,11 +24,11 @@ When you have completed your analysis, respond with your final triage report in 
 }
 ```
 
-Classification guide:
-- **noise**: Info-level or expected variation, no action needed
-- **acknowledged**: Real alert but low risk, monitor only
-- **incident**: Requires tracking and remediation, create an incident record
-- **critical_escalation**: Immediate human intervention needed, create incident AND escalate"""
+Classification guide (be conservative — most alerts should NOT be escalated):
+- **noise**: Info-level or expected variation, no action needed. Most isolated info-level alerts are noise.
+- **acknowledged**: Real alert but low risk, monitor only. Single warnings with no correlated alerts are typically just acknowledged.
+- **incident**: Requires tracking and remediation, create an incident record. Use this when you see correlated failures or a clear hardware problem. Do NOT escalate incidents unless they meet the critical_escalation criteria below.
+- **critical_escalation**: ONLY for situations requiring immediate human intervention — multiple correlated critical alerts, potential data loss, or safety risks. Create incident AND escalate. This should be rare."""
 
 
 TOOL_DEFINITIONS = [
