@@ -1,10 +1,6 @@
-"""Seed the hosts table with realistic data center host metadata."""
-
 import json
 import logging
 import random
-
-import aiosqlite
 
 from backend.db.database import get_db
 
@@ -40,7 +36,6 @@ HOSTS = [
 
 
 async def seed_host_data() -> None:
-    """Populate the hosts table with sample data center hosts if empty."""
     db = await get_db()
     count = (await db.execute_fetchall("SELECT COUNT(*) as c FROM hosts"))[0]["c"]
     if count > 0:

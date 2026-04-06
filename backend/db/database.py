@@ -1,5 +1,3 @@
-"""SQLite database connection management and schema initialization."""
-
 import json
 import logging
 from pathlib import Path
@@ -88,7 +86,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type);
 
 
 async def get_db() -> aiosqlite.Connection:
-    """Return the singleton database connection, creating it if needed."""
     global _db
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
@@ -96,7 +93,6 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def init_database() -> None:
-    """Initialize the SQLite database and create tables."""
     global _db
     db_path = Path(settings.DATABASE_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +107,6 @@ async def init_database() -> None:
 
 
 async def close_database() -> None:
-    """Close the database connection."""
     global _db
     if _db is not None:
         await _db.close()
@@ -120,7 +115,6 @@ async def close_database() -> None:
 
 
 async def insert_alert(alert: dict) -> None:
-    """Insert an alert record into the database."""
     db = await get_db()
     await db.execute(
         """INSERT INTO alerts
@@ -140,7 +134,6 @@ async def insert_alert(alert: dict) -> None:
 
 
 async def update_alert_triage_status(alert_id: str, status: str) -> None:
-    """Update the triage status of an alert."""
     db = await get_db()
     await db.execute(
         "UPDATE alerts SET triage_status = ? WHERE id = ?",
@@ -157,7 +150,6 @@ async def get_recent_alerts(
     severity: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """Query recent alerts with optional filters."""
     db = await get_db()
     conditions = ["timestamp >= datetime('now', ?)", ]
     params: list = [f"-{minutes_ago} minutes"]
@@ -186,7 +178,6 @@ async def get_recent_alerts(
 
 
 async def get_alert_by_id(alert_id: str) -> dict | None:
-    """Get a single alert by ID."""
     db = await get_db()
     cursor = await db.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,))
     row = await cursor.fetchone()
@@ -199,7 +190,6 @@ async def get_alerts_paginated(
     severity: str | None = None,
     category: str | None = None,
 ) -> list[dict]:
-    """Get alerts with pagination and optional filters."""
     db = await get_db()
     conditions: list[str] = []
     params: list = []
@@ -222,7 +212,6 @@ async def get_alerts_paginated(
 
 
 async def insert_incident(incident: dict) -> str:
-    """Insert an incident record and return its ID."""
     db = await get_db()
     await db.execute(
         """INSERT INTO incidents
@@ -242,7 +231,6 @@ async def insert_incident(incident: dict) -> str:
 
 
 async def get_incidents(status: str | None = None, limit: int = 50) -> list[dict]:
-    """Get incidents, optionally filtered by status."""
     db = await get_db()
     if status:
         rows = await db.execute_fetchall(
@@ -264,7 +252,6 @@ async def get_incidents(status: str | None = None, limit: int = 50) -> list[dict
 
 
 async def get_incident_by_id(incident_id: str) -> dict | None:
-    """Get a single incident by ID."""
     db = await get_db()
     cursor = await db.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,))
     row = await cursor.fetchone()
@@ -277,7 +264,6 @@ async def get_incident_by_id(incident_id: str) -> dict | None:
 
 
 async def insert_escalation(escalation: dict) -> str:
-    """Insert an escalation record and return its ID."""
     db = await get_db()
     await db.execute(
         """INSERT INTO escalations (id, incident_id, reason, urgency, notification_channels)
@@ -293,7 +279,6 @@ async def insert_escalation(escalation: dict) -> str:
 
 
 async def get_escalations(limit: int = 50) -> list[dict]:
-    """Get all escalations."""
     db = await get_db()
     rows = await db.execute_fetchall(
         "SELECT * FROM escalations ORDER BY created_at DESC LIMIT ?",
@@ -308,7 +293,6 @@ async def get_escalations(limit: int = 50) -> list[dict]:
 
 
 async def get_host(hostname: str) -> dict | None:
-    """Get host metadata by hostname."""
     db = await get_db()
     cursor = await db.execute("SELECT * FROM hosts WHERE hostname = ?", (hostname,))
     row = await cursor.fetchone()
@@ -320,7 +304,6 @@ async def get_host(hostname: str) -> dict | None:
 
 
 async def insert_audit_log(event_type: str, entity_id: str | None = None, details: dict | None = None) -> None:
-    """Write an entry to the audit log."""
     db = await get_db()
     await db.execute(
         "INSERT INTO audit_log (event_type, entity_id, details) VALUES (?, ?, ?)",
@@ -330,7 +313,6 @@ async def insert_audit_log(event_type: str, entity_id: str | None = None, detail
 
 
 async def get_dashboard_stats() -> dict:
-    """Compute aggregated dashboard statistics."""
     db = await get_db()
 
     total_alerts = (await db.execute_fetchall("SELECT COUNT(*) as c FROM alerts"))[0]["c"]

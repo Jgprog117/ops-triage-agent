@@ -1,8 +1,5 @@
-"""SSE streaming endpoints for live alert feed and triage traces."""
-
 import asyncio
 import json
-import logging
 
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
@@ -12,19 +9,13 @@ from backend.sse.broadcaster import (
     subscribe_triage,
     unsubscribe_alerts,
     unsubscribe_triage,
-    get_triage_history,
 )
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/stream", tags=["streaming"])
 
 
 @router.get("/alerts")
 async def stream_alerts(request: Request) -> EventSourceResponse:
-    """SSE endpoint for the live alert feed.
-
-    Streams new alerts and triage updates to connected frontend clients.
-    """
     queue = subscribe_alerts()
 
     async def event_generator():
@@ -48,11 +39,6 @@ async def stream_alerts(request: Request) -> EventSourceResponse:
 
 @router.get("/triage/{alert_id}")
 async def stream_triage(alert_id: str, request: Request) -> EventSourceResponse:
-    """SSE endpoint for agent triage steps of a specific alert.
-
-    Replays historical steps for late-joining clients, then streams
-    new steps as they arrive.
-    """
     queue = subscribe_triage(alert_id)
 
     async def event_generator():

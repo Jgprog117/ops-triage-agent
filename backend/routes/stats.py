@@ -1,5 +1,3 @@
-"""Dashboard statistics endpoint."""
-
 import time
 
 from fastapi import APIRouter
@@ -12,14 +10,12 @@ _start_time: float = 0.0
 
 
 def set_start_time(t: float) -> None:
-    """Record the application start time for uptime calculation."""
     global _start_time
     _start_time = t
 
 
 @router.get("/stats")
 async def dashboard_stats() -> dict:
-    """Get aggregated dashboard statistics."""
     stats = await get_dashboard_stats()
     stats["uptime_seconds"] = round(time.time() - _start_time, 1)
     return stats

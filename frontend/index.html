@@ -37,7 +37,6 @@
     </style>
 </head>
 <body class="text-gray-200 min-h-screen flex flex-col">
-    <!-- Header -->
     <header class="bg-surface border-b border-gray-700/50 px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3">
             <h1 class="text-lg font-semibold text-white tracking-tight">ai& Ops Agent</h1>
@@ -52,9 +51,7 @@
         </div>
     </header>
 
-    <!-- Main 3-column layout -->
     <main class="flex-1 flex overflow-hidden">
-        <!-- Left: Live Alert Feed -->
         <section class="w-80 flex-shrink-0 border-r border-gray-700/50 flex flex-col bg-surface">
             <div class="px-4 py-3 border-b border-gray-700/50">
                 <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Live Feed</h2>
@@ -80,7 +77,6 @@
             </div>
         </section>
 
-        <!-- Center: Triage Detail -->
         <section class="flex-1 flex flex-col bg-[#0d1117] min-w-0">
             <div class="px-6 py-3 border-b border-gray-700/50">
                 <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Triage Detail</h2>
@@ -95,7 +91,6 @@
             </div>
         </section>
 
-        <!-- Right: Knowledge Base Q&A -->
         <section class="w-96 flex-shrink-0 border-l border-gray-700/50 flex flex-col bg-surface">
             <div class="px-4 py-3 border-b border-gray-700/50">
                 <h2 class="text-sm font-medium text-gray-300 uppercase tracking-wider">Knowledge Base</h2>
@@ -121,7 +116,6 @@
         </section>
     </main>
 
-    <!-- Footer -->
     <footer class="bg-surface border-t border-gray-700/50 px-6 py-2 flex items-center justify-between text-xs text-gray-500 flex-shrink-0">
         <div class="flex items-center gap-4">
             <span>Model: <span id="footer-model" class="text-gray-400">loading...</span></span>
@@ -134,17 +128,13 @@
     </footer>
 
     <script>
-    // ========== State ==========
     const state = {
         alerts: [],
         selectedAlertId: null,
         triageSource: null,
-        qaHistory: [],
         connected: false,
-        startTime: Date.now(),
     };
 
-    // ========== DOM refs ==========
     const $ = (id) => document.getElementById(id);
     const alertFeed = $('alert-feed');
     const triageDetail = $('triage-detail');
@@ -152,7 +142,6 @@
     const qaForm = $('qa-form');
     const qaInput = $('qa-input');
 
-    // ========== Severity helpers ==========
     const severityColor = { critical: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
     const severityIcon = { critical: '\u25cf', warning: '\u25d0', info: '\u25cb' };
     const classificationColors = {
@@ -162,7 +151,6 @@
         critical_escalation: 'text-accent-red',
     };
 
-    // ========== SSE Connection ==========
     function connectAlertStream() {
         const source = new EventSource('/api/stream/alerts');
 
@@ -196,7 +184,6 @@
         };
     }
 
-    // ========== Alert Feed ==========
     function addAlert(alert) {
         state.alerts.unshift(alert);
         if (state.alerts.length > 200) state.alerts.pop();
@@ -245,7 +232,6 @@
         }
     }
 
-    // ========== Triage Detail ==========
     function selectAlert(alertId) {
         state.selectedAlertId = alertId;
         const alert = state.alerts.find(a => a.id === alertId);
@@ -422,7 +408,6 @@
         container.scrollTop = container.scrollHeight;
     }
 
-    // ========== Knowledge Base Q&A ==========
     let qaFirstQuery = true;
 
     qaForm.addEventListener('submit', async (e) => {
@@ -490,7 +475,6 @@
         qaThread.scrollTop = qaThread.scrollHeight;
     });
 
-    // ========== Stats & Footer ==========
     async function updateStats() {
         try {
             const res = await fetch('/api/stats');
@@ -500,7 +484,7 @@
             $('stat-p1').textContent = data.p1_open;
             $('footer-rate').textContent = data.alerts_last_hour;
             updateUptime(data.uptime_seconds);
-        } catch (e) {}
+        } catch {}
     }
 
     async function loadConfig() {
@@ -508,7 +492,7 @@
             const res = await fetch('/api/config');
             const data = await res.json();
             $('footer-model').textContent = data.llm_model;
-        } catch (e) {}
+        } catch {}
     }
 
     function updateUptime(seconds) {
@@ -518,7 +502,6 @@
         $('footer-uptime').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
-    // ========== Utilities ==========
     function escapeHtml(str) {
         if (!str) return '';
         const div = document.createElement('div');
@@ -543,7 +526,6 @@
         return JSON.stringify(output, null, 2);
     }
 
-    // ========== Init ==========
     connectAlertStream();
     loadConfig();
     setInterval(updateStats, 5000);

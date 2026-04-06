@@ -1,15 +1,8 @@
-"""Data center component definitions used by the alert simulator.
-
-Defines the hosts, racks, infrastructure components, and metric profiles
-that the simulator uses to generate realistic alerts.
-"""
-
 from dataclasses import dataclass
 
 
 @dataclass
 class MetricProfile:
-    """Defines normal range, warning threshold, and critical threshold for a metric."""
     name: str
     unit: str
     normal_min: float
@@ -18,10 +11,8 @@ class MetricProfile:
     critical_threshold: float
 
 
-# Racks in dc-tokyo-01
 RACKS = ["rack-12", "rack-14", "rack-16", "rack-18"]
 
-# Hosts per rack (mirrors seed data)
 RACK_HOSTS: dict[str, list[str]] = {
     "rack-12": [f"node-gpu-rack12-0{i}" for i in range(1, 6)],
     "rack-14": [f"node-gpu-rack14-0{i}" for i in range(1, 6)],
@@ -32,16 +23,11 @@ RACK_HOSTS: dict[str, list[str]] = {
     "rack-18": [f"node-gpu-rack18-0{i}" for i in range(1, 5)],
 }
 
-# GPU components per host (simplified — real hosts have 8 GPUs)
 GPU_COMPONENTS = [f"GPU-{i}" for i in range(8)]
 
-# Infrastructure components
 CRAC_UNITS = ["CRAC-Unit-1", "CRAC-Unit-2", "CRAC-Unit-3", "CRAC-Unit-4"]
 PDU_UNITS = ["PDU-A1", "PDU-A2", "PDU-B1", "PDU-B2"]
-SWITCHES = ["TOR-Switch-{rack}" for rack in RACKS]
-NVLINK_BRIDGES = ["NVSwitch-{rack}" for rack in RACKS]
 
-# Metric profiles by category
 THERMAL_METRICS = [
     MetricProfile("temperature_celsius", "°C", 20.0, 45.0, 75.0, 90.0),
     MetricProfile("inlet_temperature_celsius", "°C", 18.0, 28.0, 35.0, 42.0),
@@ -91,13 +77,3 @@ CATEGORY_METRICS = {
     "power": POWER_METRICS,
     "memory": MEMORY_METRICS,
 }
-
-# Teams for incident assignment
-TEAMS = [
-    "dc-ops-tokyo",
-    "gpu-infra",
-    "network-ops",
-    "storage-team",
-    "power-facilities",
-    "ml-platform",
-]
