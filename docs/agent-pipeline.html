@@ -6,51 +6,66 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #101014; color: #e4e4e7; font-family: system-ui, -apple-system, sans-serif; padding: 32px 40px; width: 620px; }
 
+  /* Vertical rail */
   .pipeline { position: relative; padding-left: 28px; }
-  .pipeline::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: #1e1e22; }
+  .pipeline::before { content: ''; position: absolute; left: 7px; top: 0; height: 0; width: 2px; background: #2563eb40; transition: height 0.6s ease-out; }
 
-  .rail { position: absolute; left: 7px; top: 0; width: 2px; background: #2563eb; height: 0; opacity: 0.5; transition: none; }
+  .step { position: relative; padding: 6px 0; opacity: 0; transform: translateY(6px); }
+  .step.visible { opacity: 1; transform: translateY(0); transition: opacity 0.35s, transform 0.35s; }
 
-  .step { position: relative; padding: 8px 0; opacity: 0; transform: translateY(6px); }
-  .step.visible { opacity: 1; transform: translateY(0); transition: opacity 0.4s, transform 0.4s; }
-
-  .dot { position: absolute; left: -28px; top: 14px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #2e2e33; background: #101014; z-index: 1; transition: all 0.3s; }
+  .dot { position: absolute; left: -28px; top: 12px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #2e2e33; background: #101014; z-index: 1; transition: all 0.3s; }
   .dot.active { border-color: #2563eb; background: #2563eb; box-shadow: 0 0 8px #2563eb50; }
   .dot.done { border-color: #22c55e; background: #22c55e; box-shadow: none; }
   .dot.action { border-color: #dc2626; background: #dc2626; box-shadow: none; }
-  .dot.decision { border-color: #d97706; background: #d97706; box-shadow: 0 0 8px #d9770640; }
+  .dot.amber { border-color: #d97706; background: #d97706; }
 
   .card { background: #1e1e22; border: 1px solid #2e2e33; border-radius: 6px; padding: 10px 14px; }
-  .card.blue { border-color: #2563eb; }
-  .card.red { border-color: #dc2626; }
-  .card.amber { border-color: #d97706; }
-
-  .title { font-size: 13px; font-weight: 500; color: #e4e4e7; }
+  .title { font-size: 13px; font-weight: 500; }
   .sub { font-size: 11px; color: #71717a; margin-top: 3px; opacity: 0; transition: opacity 0.4s; }
   .sub.visible { opacity: 1; }
 
-  .decision-options { margin-top: 6px; }
-  .option { font-size: 11px; color: #52525b; padding: 2px 0; }
-  .option.chosen { color: #f87171; font-weight: 500; background: #dc262610; border-radius: 3px; padding: 2px 6px; margin-left: -6px; }
-  .option .reason { color: #71717a; font-weight: 400; margin-left: 8px; }
+  /* Decision diamond + branches */
+  .decision-block { position: relative; padding: 6px 0; opacity: 0; transform: translateY(6px); }
+  .decision-block.visible { opacity: 1; transform: translateY(0); transition: opacity 0.35s, transform 0.35s; }
 
-  .end { font-size: 10px; color: #3f3f46; padding-top: 12px; padding-left: 4px; }
+  .diamond-wrap { display: flex; flex-direction: column; align-items: center; margin-left: -28px; }
+  .diamond { width: 28px; height: 28px; background: #101014; border: 2px solid #2e2e33; transform: rotate(45deg); margin-bottom: 12px; transition: all 0.3s; }
+  .diamond.active { border-color: #d97706; background: #d9770620; }
+  .diamond-label { font-size: 11px; color: #d97706; font-weight: 500; margin-bottom: 10px; }
+
+  .branches { display: flex; gap: 8px; width: 100%; }
+  .branch { flex: 1; border: 1px solid #2e2e33; border-radius: 6px; padding: 10px; text-align: center; transition: all 0.4s; opacity: 0.4; }
+  .branch.dim { opacity: 0.2; }
+  .branch.chosen { opacity: 1; border-color: #dc2626; background: #dc262610; }
+  .branch-title { font-size: 11px; font-weight: 500; color: #71717a; margin-bottom: 2px; transition: color 0.3s; }
+  .branch.chosen .branch-title { color: #f87171; }
+  .branch-desc { font-size: 9px; color: #52525b; }
+  .branch.chosen .branch-desc { color: #a1a1aa; }
+
+  .branch-reason { font-size: 10px; color: #71717a; text-align: center; margin-top: 8px; opacity: 0; transition: opacity 0.4s; }
+  .branch-reason.visible { opacity: 1; }
+
+  /* Connector from branches back to rail */
+  .rejoin { height: 16px; position: relative; }
+  .rejoin::before { content: ''; position: absolute; left: 7px; top: 0; width: 2px; height: 100%; background: #2e2e33; }
+
+  .end-label { font-size: 10px; color: #3f3f46; padding-top: 16px; text-align: center; opacity: 0; transition: opacity 0.5s; }
+  .end-label.visible { opacity: 1; }
 </style>
 </head>
 <body>
 
 <div class="pipeline" id="pipeline">
-  <div class="rail" id="rail"></div>
-
-  <div class="step" data-delay="200">
+  <!-- Gather phase -->
+  <div class="step" id="s1">
     <span class="dot"></span>
     <div class="card">
       <div class="title">Alert: GPU thermal throttling on node-gpu-rack12-01</div>
-      <div class="sub" style="opacity:1;color:#52525b">warning / gpu / rack-12</div>
+      <div class="sub visible" style="opacity:1;color:#52525b">warning / gpu / rack-12</div>
     </div>
   </div>
 
-  <div class="step" data-delay="1200" data-sub-delay="800">
+  <div class="step" id="s2">
     <span class="dot"></span>
     <div class="card">
       <div class="title">Checking recent alerts in rack-12</div>
@@ -58,7 +73,7 @@
     </div>
   </div>
 
-  <div class="step" data-delay="1200" data-sub-delay="800">
+  <div class="step" id="s3">
     <span class="dot"></span>
     <div class="card">
       <div class="title">Searching runbooks: GPU thermal throttling</div>
@@ -66,127 +81,134 @@
     </div>
   </div>
 
-  <div class="step" data-delay="1200" data-sub-delay="800">
+  <div class="step" id="s4">
     <span class="dot"></span>
     <div class="card">
       <div class="title">Looking up node-gpu-rack12-01</div>
       <div class="sub">8x A100 80GB, healthy, 2,104h uptime</div>
     </div>
   </div>
+</div>
 
-  <div class="step" data-delay="1400" data-type="decision">
-    <span class="dot"></span>
-    <div class="card amber">
-      <div class="title" style="color:#d97706">Assessment</div>
-      <div class="decision-options">
-        <div class="option" data-opt="1">noise / acknowledged</div>
-        <div class="option" data-opt="2">create incident</div>
-        <div class="option chosen-target" data-opt="3">create incident + escalate<span class="reason"></span></div>
-      </div>
+<!-- Decision block (outside pipeline to break the rail) -->
+<div class="decision-block" id="decision">
+  <div class="diamond-wrap">
+    <div class="diamond" id="diamond"></div>
+    <div class="diamond-label">Assessment</div>
+  </div>
+  <div class="branches">
+    <div class="branch" id="b1">
+      <div class="branch-title">noise / ack</div>
+      <div class="branch-desc">Low risk, monitor</div>
+    </div>
+    <div class="branch" id="b2">
+      <div class="branch-title">incident</div>
+      <div class="branch-desc">Track &amp; remediate</div>
+    </div>
+    <div class="branch" id="b3">
+      <div class="branch-title">escalate</div>
+      <div class="branch-desc">Incident + page on-call</div>
     </div>
   </div>
+  <div class="branch-reason" id="branch-reason">3 correlated critical alerts, active thermal cascade &#8594; escalate</div>
+</div>
 
-  <div class="step" data-delay="1400" data-sub-delay="800" data-type="action">
+<!-- Action phase (resume pipeline) -->
+<div class="pipeline" id="pipeline2" style="margin-top: 8px;">
+  <div class="step" id="s5">
     <span class="dot"></span>
-    <div class="card blue">
+    <div class="card" style="border-color: #2563eb">
       <div class="title">Creating incident: Thermal cascade in rack-12</div>
       <div class="sub">Created INC-A4EB2CFB (P1) — assigned to dc-ops-tokyo</div>
     </div>
   </div>
 
-  <div class="step" data-delay="1200" data-type="escalation">
+  <div class="step" id="s6">
     <span class="dot"></span>
-    <div class="card red">
-      <div class="title" style="color:#f87171">Escalated via slack, pager — immediate urgency</div>
+    <div class="card" style="border-color: #dc2626">
+      <div class="title" style="color: #f87171">Escalated via slack, pager — immediate urgency</div>
     </div>
   </div>
 </div>
 
-<div class="end" id="end" style="opacity:0">Triage complete — result streamed to dashboard</div>
+<div class="end-label" id="end">Triage complete — result streamed to dashboard</div>
 
 <script>
-function animate() {
-  const steps = document.querySelectorAll('.step');
-  const rail = document.getElementById('rail');
-  const end = document.getElementById('end');
-  const pipeline = document.getElementById('pipeline');
+const T = 1800; // base delay between steps
 
-  // Reset
-  steps.forEach(s => {
-    s.classList.remove('visible');
-    const dot = s.querySelector('.dot');
-    dot.className = 'dot';
-    const sub = s.querySelector('.sub');
-    if (sub) sub.classList.remove('visible');
-    const chosen = s.querySelector('.chosen-target');
-    if (chosen) { chosen.classList.remove('chosen'); chosen.querySelector('.reason').textContent = ''; }
-  });
-  rail.style.transition = 'none';
-  rail.style.height = '0px';
-  end.style.opacity = '0';
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  let totalDelay = 0;
+function showStep(el) {
+  el.classList.add('visible');
+  const dot = el.querySelector('.dot');
+  if (dot) dot.classList.add('active');
+}
 
-  steps.forEach((step, i) => {
-    const delay = parseInt(step.dataset.delay) || 1000;
-    const subDelay = parseInt(step.dataset.subDelay) || 0;
-    const type = step.dataset.type || '';
-    totalDelay += delay;
+function markDone(el, cls = 'done') {
+  const dot = el.querySelector('.dot');
+  if (dot) { dot.classList.remove('active'); dot.classList.add(cls); }
+  const sub = el.querySelector('.sub');
+  if (sub) sub.classList.add('visible');
+}
 
-    // Show step
-    setTimeout(() => {
-      step.classList.add('visible');
-      const dot = step.querySelector('.dot');
-      dot.classList.add('active');
+function growRail(pipeline, toEl) {
+  const bottom = toEl.offsetTop + toEl.offsetHeight - pipeline.offsetTop;
+  pipeline.style.setProperty('--rail-h', bottom + 'px');
+  pipeline.style.cssText += ''; // force reflow
+  pipeline.querySelector(':scope')?.parentElement;
+  document.documentElement.offsetHeight; // reflow
+  const before = window.getComputedStyle(pipeline, '::before');
+  pipeline.style.cssText = `padding-left:28px;`;
+}
 
-      // Grow rail
-      const stepBottom = step.offsetTop + step.offsetHeight;
-      rail.style.transition = 'height 0.4s ease-out';
-      rail.style.height = stepBottom + 'px';
-    }, totalDelay);
+async function animate() {
+  // Reset everything
+  document.querySelectorAll('.step, .decision-block').forEach(el => el.classList.remove('visible'));
+  document.querySelectorAll('.dot').forEach(d => d.className = 'dot');
+  document.querySelectorAll('.sub').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.branch').forEach(b => { b.classList.remove('chosen', 'dim'); b.style.opacity = ''; });
+  document.getElementById('diamond').className = 'diamond';
+  document.getElementById('branch-reason').classList.remove('visible');
+  document.getElementById('end').classList.remove('visible');
+  // Reset first step's always-visible sub
+  document.querySelector('#s1 .sub').style.opacity = '1';
+  document.querySelector('#s1 .sub').classList.add('visible');
 
-    // Show sub-result and mark done
-    if (subDelay > 0) {
-      setTimeout(() => {
-        const dot = step.querySelector('.dot');
-        const sub = step.querySelector('.sub');
-        if (sub) sub.classList.add('visible');
-        dot.classList.remove('active');
-        dot.classList.add(type === 'action' ? 'action' : 'done');
-      }, totalDelay + subDelay);
-    } else if (type === 'decision') {
-      // Decision: highlight chosen path after a pause
-      setTimeout(() => {
-        const dot = step.querySelector('.dot');
-        dot.classList.remove('active');
-        dot.classList.add('decision');
-        const chosen = step.querySelector('.chosen-target');
-        if (chosen) {
-          chosen.classList.add('chosen');
-          chosen.querySelector('.reason').textContent = ' \u2190 3 correlated critical alerts, active cascade';
-        }
-      }, totalDelay + 900);
-    } else if (type === 'escalation') {
-      setTimeout(() => {
-        const dot = step.querySelector('.dot');
-        dot.classList.remove('active');
-        dot.classList.add('action');
-      }, totalDelay + 400);
-    } else {
-      // First step (alert) — just mark done quickly
-      setTimeout(() => {
-        const dot = step.querySelector('.dot');
-        dot.classList.remove('active');
-        dot.classList.add('done');
-      }, totalDelay + 500);
-    }
-  });
+  // Phase 1: Information gathering
+  await wait(600);
+  showStep(s1); await wait(800); markDone(s1); await wait(T);
+  showStep(s2); await wait(1000); markDone(s2); await wait(T);
+  showStep(s3); await wait(1000); markDone(s3); await wait(T);
+  showStep(s4); await wait(1000); markDone(s4); await wait(T);
 
-  // Show end text
-  setTimeout(() => { end.style.transition = 'opacity 0.5s'; end.style.opacity = '1'; }, totalDelay + 1200);
+  // Phase 2: Decision
+  const dec = document.getElementById('decision');
+  dec.classList.add('visible');
+  document.getElementById('diamond').classList.add('active');
+  await wait(1200);
 
-  // Restart after hold
-  setTimeout(animate, totalDelay + 5000);
+  // Flash through all branches
+  document.querySelectorAll('.branch').forEach(b => b.style.opacity = '1');
+  await wait(1000);
+
+  // Dim unchosen, highlight chosen
+  document.getElementById('b1').classList.add('dim');
+  document.getElementById('b2').classList.add('dim');
+  document.getElementById('b3').classList.add('chosen');
+  await wait(800);
+  document.getElementById('branch-reason').classList.add('visible');
+  await wait(T + 400);
+
+  // Phase 3: Action
+  showStep(s5); await wait(1000); markDone(s5, 'action'); await wait(T);
+  showStep(s6); await wait(800); markDone(s6, 'action'); await wait(1200);
+
+  // Done
+  document.getElementById('end').classList.add('visible');
+  await wait(5000);
+
+  // Loop
+  animate();
 }
 
 animate();
