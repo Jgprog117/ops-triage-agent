@@ -68,16 +68,17 @@ See [`.env.example`](.env.example) for all options. Key settings:
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `anthropic` | `anthropic` or `openai` |
 | `LLM_MODEL` | `claude-sonnet-4-6-latest` | Model name |
-| `ALERT_INTERVAL_MIN` | `90` | Min seconds between alerts |
+| `ALERT_INTERVAL_MIN` | `60` | Min seconds between alerts |
 | `WEBHOOK_URL` | — | Outgoing webhook for escalations (HMAC-signed) |
 
 ## Testing
 
 ```bash
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-68 tests covering the parser, Pydantic models, scenario structure, RAG chunking, and LLM client (including Anthropic format conversion).
+99 tests covering the parser, Pydantic models, scenario structure, RAG chunking, LLM client, error paths, SSE broadcaster, and config validation.
 
 ## Design principles
 
