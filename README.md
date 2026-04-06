@@ -2,9 +2,9 @@
 
 An autonomous AI agent that monitors data center alerts, triages incidents, and escalates critical issues — replacing manual on-call  with a tool-use loop that reasons, correlates, and acts in real time.
 
-Internal AI tooling that keeps infrastructure teams focused on what matters: an agent that handles the repetitive alert noise so engineers can focus on the hard problems.
+The agent receives an alert, gathers context, decides, and acts. Each step streams to the dashboard live.
 
-![Architecture](docs/architecture.svg)
+![Agent pipeline](docs/agent-pipeline.gif)
 
 ## Quick start
 
@@ -42,23 +42,11 @@ LLM_API_KEY=sk-...
 
 ```
 
-## How the agent works
+## Architecture
 
-![Agent flow](docs/agent-flow.svg)
+<img src="https://raw.githubusercontent.com/Jgprog117/ops-triage-agent/main/docs/architecture.svg" alt="Architecture" width="100%">
 
-The triage agent runs a tool-use loop: it receives an alert, gathers context by calling tools (query correlated alerts, look up host info, search runbooks), then decides on a classification and next steps. Each step is streamed to the dashboard via SSE.
-
-**Tools available to the agent:**
-
-| Tool | Purpose |
-|------|---------|
-| `query_recent_alerts` | Find correlated alerts by rack, host, category |
-| `get_host_info` | Hardware specs, status, incident history |
-| `search_runbooks` | RAG search over 14 operational runbooks |
-| `create_incident` | Create a tracked incident record |
-| `escalate` | Escalate to on-call with webhook notification |
-
-**Classifications:** noise, acknowledged, incident, critical_escalation
+The agent has 5 tools: `query_recent_alerts` (find correlated events), `get_host_info` (hardware context), `search_runbooks` (RAG over 14 runbooks), `create_incident` (open a tracked record), and `escalate` (notify on-call via webhook). It classifies each alert as **noise**, **acknowledged**, **incident**, or **critical_escalation**.
 
 ## Simulated failure scenarios
 

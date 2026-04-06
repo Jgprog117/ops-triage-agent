@@ -38,6 +38,16 @@
         .severity-info { border-left: 3px solid #2563eb; }
         details summary { list-style: none; }
         details summary::-webkit-details-marker { display: none; }
+        .pipeline { position: relative; padding-left: 24px; }
+        .pipeline::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 1px; background: linear-gradient(to bottom, #2e2e33 0%, #2e2e33 100%); }
+        .pipe-node { position: relative; padding: 6px 0; }
+        .pipe-dot { position: absolute; left: -24px; top: 12px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #3f3f46; background: #101014; z-index: 1; transition: all 0.3s; }
+        .pipe-dot.active { border-color: #2563eb; background: #2563eb; box-shadow: 0 0 8px #2563eb50; animation: pulse-dot 1.5s ease-in-out infinite; }
+        .pipe-dot.done { border-color: #22c55e; background: #22c55e; }
+        .pipe-dot.action { border-color: #dc2626; background: #dc2626; }
+        @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 4px #2563eb30; } 50% { box-shadow: 0 0 12px #2563eb60; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.25s ease-out; }
         .qa-answer h1, .qa-answer h2, .qa-answer h3 { color: #a1a1aa; font-weight: 500; margin: 0.75rem 0 0.25rem; font-size: 13px; }
         .qa-answer h4 { color: #a1a1aa; font-weight: 500; margin: 0.5rem 0 0.25rem; font-size: 12px; }
         .qa-answer p { margin: 0.35rem 0; }
@@ -297,10 +307,10 @@ function selectAlert(alertId) {
             <summary class="text-[12px] font-medium text-fg-dim cursor-pointer hover:text-fg-muted py-2 border-t border-border mt-3 select-none">
                 Agent reasoning <span class="text-fg-faint font-normal ml-1" id="step-count"></span>
             </summary>
-            <div id="triage-steps" class="space-y-1.5 pt-2">
-                <div class="text-xs text-fg-faint flex items-center gap-2 py-4">
-                    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                    Waiting for agent...
+            <div id="triage-steps" class="pipeline pt-2">
+                <div class="pipe-node slide-up">
+                    <span class="pipe-dot active"></span>
+                    <div class="text-xs text-fg-faint">Waiting for agent...</div>
                 </div>
             </div>
         </details>
@@ -353,6 +363,8 @@ function renderCachedTriage(steps) {
     if (!container) return;
     container.innerHTML = '';
     reasoning.forEach(s => renderTriageStep(s));
+    // Mark all dots as done for cached (completed) triages
+    container.querySelectorAll('.pipe-dot.active').forEach(d => { d.classList.remove('active'); d.classList.add('done'); });
     updateStepCount(steps.length);
 
     const details = $('reasoning-details');
@@ -363,45 +375,55 @@ function renderTriageStep(step) {
     const container = $('triage-steps');
     if (!container) return;
 
-    const el = document.createElement('div');
-    el.className = 'fade-in';
-
     if (step.type === 'tool_call') {
         const desc = describeToolCall(step.tool_name, step.tool_input);
-        el.innerHTML = `
-            <div class="flex items-start gap-2 py-1.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-soft/60 mt-1.5 flex-shrink-0"></span>
-                <div class="min-w-0">
-                    <span class="text-[12px] text-fg-muted">${esc(desc)}</span>
-                    <details class="mt-0.5">
-                        <summary class="text-[10px] text-fg-faint cursor-pointer hover:text-fg-dim">params</summary>
-                        <pre class="mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto">${esc(JSON.stringify(step.tool_input, null, 2))}</pre>
-                    </details>
-                </div>
-            </div>
+        const node = document.createElement('div');
+        node.className = 'pipe-node slide-up';
+        node.dataset.toolName = step.tool_name;
+        node.dataset.toolStep = step.step;
+        node.innerHTML = `
+            <span class="pipe-dot active"></span>
+            <div class="text-[12px] text-fg-muted mb-0.5">${esc(desc)}</div>
+            <div class="pipe-result text-[11px] text-fg-faint"></div>
+            <details class="mt-0.5">
+                <summary class="text-[10px] text-fg-faint cursor-pointer hover:text-fg-dim">details</summary>
+                <pre class="mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto">${esc(JSON.stringify(step.tool_input, null, 2))}</pre>
+                <pre class="pipe-raw mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto max-h-28 overflow-y-auto hidden"></pre>
+            </details>
         `;
+        container.appendChild(node);
     } else if (step.type === 'tool_result') {
+        // Find the most recent node for this tool and update it
+        const nodes = container.querySelectorAll(`.pipe-node[data-tool-name="${step.tool_name}"]`);
+        const node = nodes[nodes.length - 1];
         const summary = summarizeToolResult(step.tool_name, step.tool_output);
-        el.innerHTML = `
-            <div class="flex items-start gap-2 py-0.5 ml-3.5">
-                <span class="text-[11px] text-fg-dim">${esc(summary)}</span>
-                <details class="inline">
-                    <summary class="text-[10px] text-fg-faint cursor-pointer hover:text-fg-dim ml-1">[raw]</summary>
-                    <pre class="mt-1 text-[10px] text-fg-faint mono bg-card rounded p-2 overflow-x-auto max-h-32 overflow-y-auto">${esc(formatOutput(step.tool_output))}</pre>
-                </details>
-            </div>
-        `;
+
+        if (node) {
+            const dot = node.querySelector('.pipe-dot');
+            const isAction = step.tool_name === 'create_incident' || step.tool_name === 'escalate';
+            if (dot) { dot.classList.remove('active'); dot.classList.add(isAction ? 'action' : 'done'); }
+            const resultEl = node.querySelector('.pipe-result');
+            if (resultEl) resultEl.textContent = summary;
+            const rawEl = node.querySelector('.pipe-raw');
+            if (rawEl) { rawEl.textContent = formatOutput(step.tool_output); rawEl.classList.remove('hidden'); }
+        } else {
+            // Fallback: no matching call node, render standalone
+            const el = document.createElement('div');
+            el.className = 'pipe-node slide-up';
+            el.innerHTML = `<span class="pipe-dot done"></span><div class="text-[11px] text-fg-dim">${esc(summary)}</div>`;
+            container.appendChild(el);
+        }
     } else if (step.type === 'final_triage' && step.triage_result) {
+        // Mark all remaining active dots as done
+        container.querySelectorAll('.pipe-dot.active').forEach(d => { d.classList.remove('active'); d.classList.add('done'); });
         renderTriageResult(step.triage_result);
         const details = $('reasoning-details');
         if (details) details.removeAttribute('open');
-        // Scroll to top so the result is visible
         const panel = $('triage-detail');
         if (panel) panel.scrollTop = 0;
         return;
     }
 
-    container.appendChild(el);
     container.scrollTop = container.scrollHeight;
     updateStepCount();
 }
@@ -439,6 +461,20 @@ function renderTriageResult(r) {
                 ${r.escalation_required ? '<span class="text-[11px] font-medium px-2 py-0.5 rounded bg-red-900/30 text-red-400">escalated</span>' : ''}
             </div>
 
+            ${r.escalation_required ? `
+            <div class="bg-red-950/30 border border-red-900/30 rounded-lg p-3 mb-3">
+                <div class="text-[12px] text-red-400 font-medium mb-2">Escalation</div>
+                <div class="space-y-1.5 text-[12px]">
+                    <div><span class="text-red-400/60">Reason</span> <span class="text-red-200 ml-2">${esc(r.escalation_reason || 'Immediate attention required')}</span></div>
+                    ${escDetails?.urgency ? `<div><span class="text-red-400/60">Urgency</span> <span class="text-red-200 ml-2">${esc(escDetails.urgency.replace('_', ' '))}</span></div>` : ''}
+                    ${escDetails?.notification_channels ? `<div><span class="text-red-400/60">Notified via</span> <span class="text-red-200 ml-2">${escDetails.notification_channels.join(', ')}</span></div>` : ''}
+                    ${escDetails?.assigned_team || escDetails?.incident_id ? `<div>
+                        ${escDetails.assigned_team ? `<span class="text-red-400/60">Team</span> <span class="text-red-200 ml-2">${esc(escDetails.assigned_team)}</span>` : ''}
+                        ${escDetails.incident_id ? `<span class="text-red-400/60 ${escDetails.assigned_team ? 'ml-4' : ''}">Incident</span> <span class="text-red-200 ml-2 mono">${esc(escDetails.incident_id)}</span>` : ''}
+                    </div>` : ''}
+                </div>
+            </div>` : ''}
+
             ${agentSummary ? `<p class="text-[11px] text-fg-faint mb-2">${agentSummary}</p>` : ''}
 
             <p class="text-[13px] text-fg-muted leading-relaxed mb-3">${esc(r.summary)}</p>
@@ -465,22 +501,9 @@ function renderTriageResult(r) {
                     </div>
                 </div>` : ''}
 
-                ${r.escalation_required ? `
-                <div class="bg-red-950/30 border border-red-900/30 rounded-lg p-3 mt-2">
-                    <div class="text-[12px] text-red-400 font-medium mb-2">Escalation</div>
-                    <div class="space-y-1.5 text-[12px]">
-                        <div><span class="text-red-400/60">Reason</span> <span class="text-red-200 ml-2">${esc(r.escalation_reason || 'Immediate attention required')}</span></div>
-                        ${escDetails?.urgency ? `<div><span class="text-red-400/60">Urgency</span> <span class="text-red-200 ml-2">${esc(escDetails.urgency.replace('_', ' '))}</span></div>` : ''}
-                        ${escDetails?.notification_channels ? `<div><span class="text-red-400/60">Notified via</span> <span class="text-red-200 ml-2">${escDetails.notification_channels.join(', ')}</span></div>` : ''}
-                        ${escDetails?.assigned_team || escDetails?.incident_id ? `<div>
-                            ${escDetails.assigned_team ? `<span class="text-red-400/60">Team</span> <span class="text-red-200 ml-2">${esc(escDetails.assigned_team)}</span>` : ''}
-                            ${escDetails.incident_id ? `<span class="text-red-400/60 ${escDetails.assigned_team ? 'ml-4' : ''}">Incident</span> <span class="text-red-200 ml-2 mono">${esc(escDetails.incident_id)}</span>` : ''}
-                        </div>` : ''}
-                    </div>
-                </div>` : ''}
-
                 <div class="pt-2 border-t border-border">
-                    <p class="text-[12px] text-fg-faint">${esc(r.summary_ja)}</p>
+                    <span class="text-[11px] text-fg-faint">Japanese summary</span>
+                    <p class="text-[12px] text-fg-faint mt-0.5">${esc(r.summary_ja)}</p>
                 </div>
             </div>
         </div>
