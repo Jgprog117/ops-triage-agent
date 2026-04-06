@@ -6,13 +6,15 @@ from backend.llm.client import llm
 
 logger = logging.getLogger(__name__)
 
-QA_SYSTEM_PROMPT = """You are a knowledgeable data center operations assistant for the dc-tokyo-01 facility. Answer the question based on the provided runbook excerpts. Be specific and actionable.
+QA_SYSTEM_PROMPT = """You are a knowledgeable data center operations assistant for the dc-tokyo-01 facility. Answer the question based on the provided runbook excerpts.
 
 Rules:
-- Cite which runbook you're referencing (e.g., "According to gpu_thermal_throttling.md...")
+- Explain technical terms and acronyms in plain language (e.g., "CRAC unit (cooling system)", "ECC errors (memory fault detection)", "NVLink (GPU-to-GPU connection)")
+- Use short paragraphs and bullet points for readability
+- Cite which runbook you're referencing
 - If the answer isn't fully covered in the runbooks, say so clearly
-- Include specific thresholds, commands, and procedures when available
-- Keep your answer concise but complete"""
+- Include specific thresholds and procedures when available
+- Your audience may not have deep hardware experience — prioritize clarity over jargon"""
 
 
 async def answer_question(query: str) -> dict:

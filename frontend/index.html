@@ -350,6 +350,23 @@ function renderTriageResult(r) {
     const cls = r.classification || 'acknowledged';
     const style = clsStyle[cls] || clsStyle.acknowledged;
 
+    // Find escalation details from cached tool results if available
+    const alertId = state.selectedAlertId;
+    const cache = alertId ? state.triageCache[alertId] : null;
+    let escDetails = null;
+    if (r.escalation_required && cache) {
+        const escStep = cache.steps.find(s => s.type === 'tool_result' && s.tool_name === 'escalate');
+        if (escStep) {
+            try { escDetails = typeof escStep.tool_output === 'string' ? JSON.parse(escStep.tool_output) : escStep.tool_output; } catch {}
+        }
+        if (!escDetails) {
+            const incStep = cache.steps.find(s => s.type === 'tool_result' && s.tool_name === 'create_incident');
+            if (incStep) {
+                try { escDetails = typeof incStep.tool_output === 'string' ? JSON.parse(incStep.tool_output) : incStep.tool_output; } catch {}
+            }
+        }
+    }
+
     container.innerHTML = `
         <div class="bg-card border border-border rounded-lg p-4 fade-in">
             <div class="flex items-center gap-2 mb-3">
@@ -357,7 +374,7 @@ function renderTriageResult(r) {
                 ${r.escalation_required ? '<span class="text-[11px] font-medium px-2 py-0.5 rounded bg-red-900/30 text-red-400">escalated</span>' : ''}
             </div>
 
-            <p class="text-[13px] text-fg leading-relaxed mb-3">${esc(r.summary)}</p>
+            <p class="text-[13px] text-fg-muted leading-relaxed mb-3">${esc(r.summary)}</p>
 
             <div class="space-y-2.5 text-[12px]">
                 <div>
@@ -382,9 +399,17 @@ function renderTriageResult(r) {
                 </div>` : ''}
 
                 ${r.escalation_required ? `
-                <div class="bg-red-950/30 border border-red-900/30 rounded p-2.5 mt-1">
-                    <span class="text-[11px] text-red-400 font-medium">Escalation: </span>
-                    <span class="text-[11px] text-red-300">${esc(r.escalation_reason || 'Immediate attention required')}</span>
+                <div class="bg-red-950/30 border border-red-900/30 rounded-lg p-3 mt-2">
+                    <div class="text-[12px] text-red-400 font-medium mb-2">Escalation</div>
+                    <div class="space-y-1.5 text-[12px]">
+                        <div><span class="text-red-400/60">Reason</span> <span class="text-red-200 ml-2">${esc(r.escalation_reason || 'Immediate attention required')}</span></div>
+                        ${escDetails?.urgency ? `<div><span class="text-red-400/60">Urgency</span> <span class="text-red-200 ml-2">${esc(escDetails.urgency.replace('_', ' '))}</span></div>` : ''}
+                        ${escDetails?.notification_channels ? `<div><span class="text-red-400/60">Notified via</span> <span class="text-red-200 ml-2">${escDetails.notification_channels.join(', ')}</span></div>` : ''}
+                        ${escDetails?.assigned_team || escDetails?.incident_id ? `<div>
+                            ${escDetails.assigned_team ? `<span class="text-red-400/60">Team</span> <span class="text-red-200 ml-2">${esc(escDetails.assigned_team)}</span>` : ''}
+                            ${escDetails.incident_id ? `<span class="text-red-400/60 ${escDetails.assigned_team ? 'ml-4' : ''}">Incident</span> <span class="text-red-200 ml-2 mono">${esc(escDetails.incident_id)}</span>` : ''}
+                        </div>` : ''}
+                    </div>
                 </div>` : ''}
 
                 <div class="pt-2 border-t border-border">
@@ -476,7 +501,7 @@ qaForm.addEventListener('submit', async (e) => {
 
     const qEl = document.createElement('div');
     qEl.className = 'fade-in';
-    qEl.innerHTML = `<div class="bg-blue-soft/10 border border-blue-soft/20 rounded-md p-3 text-[13px] text-fg">${esc(query)}</div>`;
+    qEl.innerHTML = `<div class="bg-blue-soft/10 border border-blue-soft/20 rounded-md p-3 text-[13px] text-fg-muted">${esc(query)}</div>`;
     qaThread.appendChild(qEl);
 
     qaInput.value = '';
@@ -502,7 +527,7 @@ qaForm.addEventListener('submit', async (e) => {
         aEl.className = 'fade-in';
         aEl.innerHTML = `
             <div class="bg-card rounded-md p-3 space-y-2">
-                <div class="text-[13px] text-fg leading-relaxed whitespace-pre-wrap">${esc(data.answer)}</div>
+                <div class="qa-answer text-[13px] text-fg-muted leading-relaxed">${renderMd(data.answer)}</div>
                 ${data.sources?.length ? `
                 <div class="border-t border-border pt-2">
                     <div class="flex flex-wrap gap-1">
@@ -568,6 +593,19 @@ function formatOutput(output) {
         try { return JSON.stringify(JSON.parse(output), null, 2); } catch { return output; }
     }
     return JSON.stringify(output, null, 2);
+}
+
+function renderMd(text) {
+    if (!text) return '';
+    return esc(text)
+        .replace(/^### (.+)$/gm, '<h4 class="text-fg font-medium mt-3 mb-1">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 class="text-fg font-medium mt-3 mb-1">$1</h3>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-fg font-medium">$1</strong>')
+        .replace(/`([^`]+)`/g, '<code class="mono text-[12px] bg-hover px-1 py-0.5 rounded text-fg-dim">$1</code>')
+        .replace(/^- (.+)$/gm, '<li class="ml-3 flex gap-1.5"><span class="text-fg-faint select-none">-</span><span>$1</span></li>')
+        .replace(/^\d+\. (.+)$/gm, '<li class="ml-3 text-fg-muted">$1</li>')
+        .replace(/\n{2,}/g, '</p><p class="mt-2">')
+        .replace(/\n/g, '<br>');
 }
 
 connectAlertStream();
