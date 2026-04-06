@@ -2,9 +2,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    LLM_PROVIDER: str = "openai"  # "openai" or "anthropic"
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_API_KEY: str = "your-api-key-here"
-    LLM_API_BASE: str = "https://api.openai.com/v1"
+    LLM_API_BASE: str = ""
     OPS_AGENT_API_KEY: str = "demo-key-change-me"
     ALERT_INTERVAL_MIN: int = 3
     ALERT_INTERVAL_MAX: int = 8
