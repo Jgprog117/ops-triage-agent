@@ -96,7 +96,37 @@
                 <span class="text-[13px] font-medium text-fg-muted">Knowledge base</span>
             </div>
             <div id="qa-thread" class="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
-                <div class="text-center text-fg-faint text-xs py-12">Ask questions about DC operations, runbooks, and procedures</div>
+                <div id="qa-empty-state">
+                    <p class="text-[12px] text-fg-dim mb-3">Ask questions about data center operations. Answers are grounded in 14 operational runbooks.</p>
+                    <div class="mb-3">
+                        <p class="text-[11px] text-fg-faint mb-1.5">Try asking:</p>
+                        <div class="space-y-1" id="qa-suggestions">
+                            <button class="qa-suggestion w-full text-left text-[12px] text-fg-dim bg-card hover:bg-hover rounded-md px-3 py-2 transition-colors">What should I do when a GPU shows ECC errors?</button>
+                            <button class="qa-suggestion w-full text-left text-[12px] text-fg-dim bg-card hover:bg-hover rounded-md px-3 py-2 transition-colors">How does the escalation policy work?</button>
+                            <button class="qa-suggestion w-full text-left text-[12px] text-fg-dim bg-card hover:bg-hover rounded-md px-3 py-2 transition-colors">What is the procedure for a CRAC unit failure?</button>
+                            <button class="qa-suggestion w-full text-left text-[12px] text-fg-dim bg-card hover:bg-hover rounded-md px-3 py-2 transition-colors">How do I handle network switch flapping?</button>
+                        </div>
+                    </div>
+                    <details class="group">
+                        <summary class="text-[11px] text-fg-faint cursor-pointer hover:text-fg-dim select-none">Available runbooks (14)</summary>
+                        <div class="mt-1.5 grid grid-cols-2 gap-1 text-[10px]">
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">GPU thermal throttling</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">GPU ECC errors</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">GPU NVLink failure</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">CRAC unit failure</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Network partition</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Switch flapping</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Power/PDU anomaly</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Storage SMART warnings</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Memory errors</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Node health check</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Training job failure</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Rack maintenance</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Escalation policy</span>
+                            <span class="text-fg-faint bg-card rounded px-2 py-1">Incident response</span>
+                        </div>
+                    </details>
+                </div>
             </div>
             <div class="p-3 border-t border-border">
                 <form id="qa-form" class="flex gap-2">
@@ -622,12 +652,23 @@ async function fetchTriageHistory(alertId) {
 
 let qaFirstQuery = true;
 
+document.querySelectorAll('.qa-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+        qaInput.value = btn.textContent;
+        qaForm.dispatchEvent(new Event('submit'));
+    });
+});
+
 qaForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const query = qaInput.value.trim();
     if (!query) return;
 
-    if (qaFirstQuery) { qaThread.innerHTML = ''; qaFirstQuery = false; }
+    if (qaFirstQuery) {
+        const empty = $('qa-empty-state');
+        if (empty) empty.remove();
+        qaFirstQuery = false;
+    }
 
     const qEl = document.createElement('div');
     qEl.className = 'fade-in';
