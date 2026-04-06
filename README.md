@@ -44,21 +44,11 @@ LLM_API_KEY=sk-...
 
 ## How the agent works
 
-![Agent flow](docs/agent-flow.svg)
+The triage agent runs a tool-use loop: receive alert, gather context, decide, act. Each step streams to the dashboard in real time.
 
-The triage agent runs a tool-use loop: it receives an alert, gathers context by calling tools (query correlated alerts, look up host info, search runbooks), then decides on a classification and next steps. Each step is streamed to the dashboard via SSE.
+![Agent pipeline](docs/agent-pipeline.svg)
 
-**Tools available to the agent:**
-
-| Tool | Purpose |
-|------|---------|
-| `query_recent_alerts` | Find correlated alerts by rack, host, category |
-| `get_host_info` | Hardware specs, status, incident history |
-| `search_runbooks` | RAG search over 14 operational runbooks |
-| `create_incident` | Create a tracked incident record |
-| `escalate` | Escalate to on-call with webhook notification |
-
-**Classifications:** noise, acknowledged, incident, critical_escalation
+The agent has 5 tools: `query_recent_alerts` (find correlated events), `get_host_info` (hardware context), `search_runbooks` (RAG over 14 runbooks), `create_incident` (open a tracked record), and `escalate` (notify on-call via webhook). It classifies each alert as **noise**, **acknowledged**, **incident**, or **critical_escalation**.
 
 ## Simulated failure scenarios
 
