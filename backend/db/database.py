@@ -1,3 +1,13 @@
+"""SQLite-backed persistence layer for alerts, incidents, and audit data.
+
+The module owns a single process-wide :class:`aiosqlite.Connection` opened
+during application startup. All public coroutines obtain that connection
+via :func:`get_db`, so callers must call :func:`init_database` before any
+read or write. The :data:`SCHEMA` constant is the canonical schema and is
+applied idempotently — :func:`_migrate_incidents_columns` handles any
+columns introduced after the initial release.
+"""
+
 import json
 import logging
 from pathlib import Path
@@ -103,6 +113,15 @@ END;
 
 
 async def get_db() -> aiosqlite.Connection:
+    """Returns the process-wide aiosqlite connection.
+
+    Returns:
+        The shared :class:`aiosqlite.Connection` opened by
+        :func:`init_database`.
+
+    Raises:
+        RuntimeError: If the database has not been initialized yet.
+    """
     global _db
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_database() first.")
@@ -110,6 +129,13 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def init_database() -> None:
+    """Opens the database connection and applies the schema.
+
+    Creates the database file (and parent directories) if needed, sets the
+    pragmas used by the rest of the codebase (WAL, foreign keys, busy
+    timeout, NORMAL sync, 64MB cache), runs the :data:`SCHEMA` script, and
+    applies any column-level migrations. Safe to call once at startup.
+    """
     global _db
     db_path = Path(settings.DATABASE_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,10 +154,16 @@ async def init_database() -> None:
 
 
 async def _migrate_incidents_columns(db: aiosqlite.Connection) -> None:
-    """Add columns introduced after initial schema. Safe to run repeatedly.
-    Indexes that depend on the new columns are created here too — they cannot
-    live in the SCHEMA executescript because executescript runs before the
-    ALTER TABLE statements on databases that pre-date the migration."""
+    """Adds columns introduced after the initial schema, idempotently.
+
+    Indexes that depend on the new columns are also created here — they
+    cannot live in :data:`SCHEMA` because ``executescript`` runs before
+    the ``ALTER TABLE`` statements on databases that pre-date the
+    migration.
+
+    Args:
+        db: The open aiosqlite connection to migrate.
+    """
     cursor = await db.execute("PRAGMA table_info(incidents)")
     existing = {row[1] for row in await cursor.fetchall()}
     if "primary_alert_id" not in existing:
@@ -147,6 +179,7 @@ async def _migrate_incidents_columns(db: aiosqlite.Connection) -> None:
 
 
 async def close_database() -> None:
+    """Closes the process-wide aiosqlite connection if it is open."""
     global _db
     if _db is not None:
         await _db.close()
@@ -155,6 +188,12 @@ async def close_database() -> None:
 
 
 async def insert_alert(alert: dict) -> None:
+    """Inserts a new alert row.
+
+    Args:
+        alert: A dict matching the ``alerts`` table columns. ``raw_data``
+            is JSON-serialized; ``triage_status`` defaults to ``pending``.
+    """
     db = await get_db()
     await db.execute(
         """INSERT INTO alerts
@@ -174,6 +213,12 @@ async def insert_alert(alert: dict) -> None:
 
 
 async def update_alert_triage_status(alert_id: str, status: str) -> None:
+    """Updates the ``triage_status`` column on a single alert.
+
+    Args:
+        alert_id: The alert id whose status to update.
+        status: New status value.
+    """
     db = await get_db()
     await db.execute(
         "UPDATE alerts SET triage_status = ? WHERE id = ?",
@@ -191,10 +236,27 @@ async def get_recent_alerts(
     limit: int = 50,
     exclude_id: str | None = None,
 ) -> list[dict]:
-    """Return recent alerts. Each row includes ``open_incident_id`` — the id of
-    the first open incident whose ``correlated_alert_ids`` contains the alert,
-    or NULL if none. This lets the agent see at-a-glance which alerts are
-    already being handled and avoid creating duplicate incidents."""
+    """Returns recent alerts joined with their open-incident link, if any.
+
+    Each row includes ``open_incident_id`` — the id of the first open
+    incident whose ``correlated_alert_ids`` contains the alert, or
+    ``NULL`` if none. This lets the agent see at a glance which alerts
+    are already being handled and avoid creating duplicate incidents.
+
+    Args:
+        minutes_ago: Lookback window in minutes.
+        rack: Optional rack filter.
+        host: Optional hostname filter.
+        category: Optional category filter.
+        severity: Optional severity filter.
+        limit: Maximum rows to return.
+        exclude_id: Optional alert id to exclude (typically the alert
+            currently being triaged).
+
+    Returns:
+        A list of dicts, one per alert row, ordered by ``timestamp``
+        descending.
+    """
     db = await get_db()
     conditions = ["a.timestamp >= datetime('now', ?)"]
     params: list = [f"-{minutes_ago} minutes"]
@@ -239,6 +301,14 @@ async def get_recent_alerts(
 
 
 async def get_alert_by_id(alert_id: str) -> dict | None:
+    """Fetches a single alert row by id.
+
+    Args:
+        alert_id: The alert id to fetch.
+
+    Returns:
+        The alert row as a dict, or ``None`` if no alert matches.
+    """
     db = await get_db()
     cursor = await db.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,))
     row = await cursor.fetchone()
@@ -251,6 +321,17 @@ async def get_alerts_paginated(
     severity: str | None = None,
     category: str | None = None,
 ) -> list[dict]:
+    """Returns a paginated slice of alerts ordered by ``timestamp`` desc.
+
+    Args:
+        offset: Number of rows to skip.
+        limit: Maximum rows to return.
+        severity: Optional severity filter.
+        category: Optional category filter.
+
+    Returns:
+        A list of dicts, one per alert row.
+    """
     db = await get_db()
     conditions: list[str] = []
     params: list = []
@@ -273,6 +354,16 @@ async def get_alerts_paginated(
 
 
 async def insert_incident(incident: dict) -> str:
+    """Inserts a new incident row.
+
+    Args:
+        incident: A dict matching the ``incidents`` table columns.
+            ``remediation_steps`` and ``correlated_alert_ids`` are
+            JSON-serialized; ``escalated`` is coerced to 0/1.
+
+    Returns:
+        The id of the newly inserted incident.
+    """
     db = await get_db()
     await db.execute(
         """INSERT INTO incidents
@@ -294,9 +385,20 @@ async def insert_incident(incident: dict) -> str:
 
 
 async def attach_alert_to_incident(incident_id: str, alert_id: str) -> dict | None:
-    """Append ``alert_id`` to an open incident's correlated_alert_ids if not
-    already present. Returns the updated incident dict, or None if the
-    incident does not exist or is not open."""
+    """Adds an alert to an open incident's correlated alert list.
+
+    Loads the existing list, appends ``alert_id`` if not already present,
+    and writes the new list back. Refuses to attach to incidents that are
+    not in ``open`` status.
+
+    Args:
+        incident_id: The incident to attach to.
+        alert_id: The alert to add.
+
+    Returns:
+        The updated incident dict (with parsed list fields), or ``None``
+        if the incident does not exist or is not open.
+    """
     db = await get_db()
     cursor = await db.execute(
         "SELECT correlated_alert_ids, status FROM incidents WHERE id = ?",
@@ -325,10 +427,25 @@ async def find_open_incidents_for_alert(
     minutes_ago: int = 60,
     limit: int = 5,
 ) -> list[dict]:
-    """Find open incidents whose primary alert matches any of the supplied
-    rack/host/category filters within the last ``minutes_ago`` minutes.
-    The agent calls this before create_incident to avoid duplicate records
-    when a real incident is already being tracked for the same scenario."""
+    """Finds open incidents whose primary alert matches the given filters.
+
+    The agent calls this before :func:`insert_incident` to avoid creating
+    duplicate records when a real incident is already being tracked for
+    the same scenario. The filters combine with ``OR`` so any matching
+    rack, host, or category produces a hit. Returns an empty list when
+    none of ``rack``, ``host``, ``category`` are provided.
+
+    Args:
+        rack: Optional rack filter.
+        host: Optional hostname filter.
+        category: Optional category filter.
+        minutes_ago: Lookback window for incident creation time.
+        limit: Maximum incidents to return.
+
+    Returns:
+        A list of incident dicts (with parsed list fields), ordered by
+        ``created_at`` descending.
+    """
     if not (rack or host or category):
         return []
 
@@ -371,6 +488,11 @@ async def find_open_incidents_for_alert(
 
 
 async def mark_incident_escalated(incident_id: str) -> None:
+    """Sets the ``escalated`` flag on an incident.
+
+    Args:
+        incident_id: The incident to mark.
+    """
     db = await get_db()
     await db.execute(
         "UPDATE incidents SET escalated = 1 WHERE id = ?",
@@ -380,6 +502,16 @@ async def mark_incident_escalated(incident_id: str) -> None:
 
 
 async def get_incidents(status: str | None = None, limit: int = 50) -> list[dict]:
+    """Returns incidents ordered by creation time descending.
+
+    Args:
+        status: Optional status filter (e.g., ``open``).
+        limit: Maximum rows to return.
+
+    Returns:
+        A list of incident dicts with parsed ``remediation_steps`` and
+        ``correlated_alert_ids`` lists.
+    """
     db = await get_db()
     if status:
         rows = await db.execute_fetchall(
@@ -401,6 +533,15 @@ async def get_incidents(status: str | None = None, limit: int = 50) -> list[dict
 
 
 async def get_incident_by_id(incident_id: str) -> dict | None:
+    """Fetches a single incident by id.
+
+    Args:
+        incident_id: The incident id to fetch.
+
+    Returns:
+        The incident dict (with parsed list fields), or ``None`` if no
+        incident matches.
+    """
     db = await get_db()
     cursor = await db.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,))
     row = await cursor.fetchone()
@@ -413,6 +554,15 @@ async def get_incident_by_id(incident_id: str) -> dict | None:
 
 
 async def insert_escalation(escalation: dict) -> str:
+    """Inserts a new escalation row.
+
+    Args:
+        escalation: A dict matching the ``escalations`` table columns.
+            ``notification_channels`` is JSON-serialized.
+
+    Returns:
+        The id of the newly inserted escalation.
+    """
     db = await get_db()
     await db.execute(
         """INSERT INTO escalations (id, incident_id, reason, urgency, notification_channels)
@@ -428,6 +578,14 @@ async def insert_escalation(escalation: dict) -> str:
 
 
 async def get_escalations(limit: int = 50) -> list[dict]:
+    """Returns the most recent escalations.
+
+    Args:
+        limit: Maximum rows to return.
+
+    Returns:
+        A list of escalation dicts with parsed ``notification_channels``.
+    """
     db = await get_db()
     rows = await db.execute_fetchall(
         "SELECT * FROM escalations ORDER BY created_at DESC LIMIT ?",
@@ -442,6 +600,15 @@ async def get_escalations(limit: int = 50) -> list[dict]:
 
 
 async def get_host(hostname: str) -> dict | None:
+    """Fetches a host inventory row by hostname.
+
+    Args:
+        hostname: The host to look up.
+
+    Returns:
+        The host dict with parsed ``metadata``, or ``None`` if no host
+        matches.
+    """
     db = await get_db()
     cursor = await db.execute("SELECT * FROM hosts WHERE hostname = ?", (hostname,))
     row = await cursor.fetchone()
@@ -453,6 +620,14 @@ async def get_host(hostname: str) -> dict | None:
 
 
 async def insert_audit_log(event_type: str, entity_id: str | None = None, details: dict | None = None) -> None:
+    """Writes an audit-log entry.
+
+    Args:
+        event_type: The event name (e.g., ``triage_started``).
+        entity_id: Optional id of the entity the event refers to (alert,
+            incident, escalation).
+        details: Optional structured details. JSON-serialized.
+    """
     db = await get_db()
     await db.execute(
         "INSERT INTO audit_log (event_type, entity_id, details) VALUES (?, ?, ?)",
@@ -462,6 +637,13 @@ async def insert_audit_log(event_type: str, entity_id: str | None = None, detail
 
 
 async def insert_webhook_dlq(payload: str, error: str, attempts: int) -> None:
+    """Persists a failed webhook delivery to the dead-letter queue.
+
+    Args:
+        payload: The exact body that failed delivery.
+        error: The terminal error message.
+        attempts: How many delivery attempts were made before giving up.
+    """
     db = await get_db()
     await db.execute(
         "INSERT INTO webhook_dlq (payload, error, attempts) VALUES (?, ?, ?)",
@@ -471,6 +653,15 @@ async def insert_webhook_dlq(payload: str, error: str, attempts: int) -> None:
 
 
 async def get_dashboard_stats() -> dict:
+    """Returns aggregate counters for the dashboard.
+
+    Computes alert and incident totals plus the open-incident counts in a
+    single SQL roundtrip.
+
+    Returns:
+        A dict matching the field set of :class:`DashboardStats`, minus
+        ``uptime_seconds`` which is added by the route handler.
+    """
     db = await get_db()
     row = (await db.execute_fetchall("""
         SELECT

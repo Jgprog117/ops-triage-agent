@@ -1,3 +1,13 @@
+"""Provider-agnostic HTTP client for OpenAI- and Anthropic-style chat APIs.
+
+The :class:`LLMClient` exposes a single ``chat_completion`` surface and
+hides the format differences between OpenAI's ``/v1/chat/completions``
+endpoint and Anthropic's ``/v1/messages`` endpoint. Anthropic responses
+are normalized into the OpenAI shape so the rest of the codebase only
+needs to know one format. Retries with exponential backoff and the
+custom :class:`backend.exceptions.LLMError` taxonomy live here.
+"""
+
 import asyncio
 import json
 import logging
@@ -23,7 +33,23 @@ DEFAULT_BASES = {
 
 
 class LLMClient:
+    """HTTP client that wraps the configured LLM provider.
+
+    The instance reads its provider, base URL, API key, and model from
+    :data:`backend.config.settings` at construction time. The underlying
+    :class:`httpx.AsyncClient` is created lazily on first use and reused
+    for all subsequent calls until :meth:`close` is invoked.
+
+    Attributes:
+        provider: The lowercase provider id (``anthropic`` or ``openai``).
+        base_url: The HTTP base URL for the provider, without trailing
+            slash.
+        api_key: The provider API key.
+        model: The model name passed in every request body.
+    """
+
     def __init__(self) -> None:
+        """Reads provider config from settings and prepares the client."""
         self.provider = settings.LLM_PROVIDER.lower()
         self.base_url = (settings.LLM_API_BASE or DEFAULT_BASES.get(self.provider, "")).rstrip("/")
         self.api_key = settings.LLM_API_KEY
@@ -31,11 +57,17 @@ class LLMClient:
         self._client: httpx.AsyncClient | None = None
 
     def _get_client(self) -> httpx.AsyncClient:
+        """Returns the lazily-instantiated shared httpx client.
+
+        Returns:
+            The shared :class:`httpx.AsyncClient`, created on first call.
+        """
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=settings.LLM_TIMEOUT)
         return self._client
 
     async def close(self) -> None:
+        """Closes the underlying httpx client if one was created."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -47,6 +79,33 @@ class LLMClient:
         temperature: float = 0.2,
         _max_retries: int | None = None,
     ) -> dict[str, Any]:
+        """Sends a chat-completion request to the configured provider.
+
+        Routes to either :meth:`_anthropic_completion` or
+        :meth:`_openai_completion` based on :attr:`provider`. Retries
+        timeouts, 429s, and 5xx responses with exponential backoff.
+        Non-retryable 4xx errors propagate immediately.
+
+        Args:
+            messages: OpenAI-style message list. Anthropic-format
+                messages must be converted by the caller — internally
+                this method always normalizes to OpenAI shape.
+            tools: Optional OpenAI-style tool definitions. When provided
+                they are forwarded to the model with ``tool_choice=auto``.
+            temperature: Sampling temperature in ``[0, 2]``.
+            _max_retries: Internal override for the retry count. Tests
+                use this to keep iteration counts small.
+
+        Returns:
+            The response body in OpenAI ``chat.completion`` shape.
+
+        Raises:
+            LLMTimeoutError: When all retries hit a network timeout.
+            LLMRateLimitError: When all retries returned HTTP 429.
+            LLMServerError: When all retries returned 5xx, or for the
+                degenerate case where the loop exits with no result.
+            httpx.HTTPStatusError: For non-retryable 4xx responses.
+        """
         max_retries = _max_retries if _max_retries is not None else settings.LLM_MAX_RETRIES
 
         for attempt in range(max_retries):
@@ -96,6 +155,21 @@ class LLMClient:
         tools: list[dict[str, Any]] | None,
         temperature: float,
     ) -> dict[str, Any]:
+        """Performs a single chat-completion call against an OpenAI endpoint.
+
+        Args:
+            messages: OpenAI-style message list.
+            tools: Optional OpenAI-style tool definitions.
+            temperature: Sampling temperature.
+
+        Returns:
+            The decoded JSON response body.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response.
+            httpx.TimeoutException: When the request exceeds the
+                configured timeout.
+        """
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -123,6 +197,25 @@ class LLMClient:
         tools: list[dict[str, Any]] | None,
         temperature: float,
     ) -> dict[str, Any]:
+        """Performs a single chat-completion call against Anthropic.
+
+        Converts OpenAI-shaped messages and tools to Anthropic format,
+        sends the request, and converts the response back to the OpenAI
+        shape so callers see a single format.
+
+        Args:
+            messages: OpenAI-style message list.
+            tools: Optional OpenAI-style tool definitions.
+            temperature: Sampling temperature.
+
+        Returns:
+            The Anthropic response normalized to OpenAI shape.
+
+        Raises:
+            httpx.HTTPStatusError: For any non-2xx response.
+            httpx.TimeoutException: When the request exceeds the
+                configured timeout.
+        """
         system, converted_messages = self._to_anthropic_messages(messages)
         payload: dict[str, Any] = {
             "model": self.model,
@@ -148,6 +241,22 @@ class LLMClient:
         return self._from_anthropic_response(response.json())
 
     def _to_anthropic_messages(self, messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+        """Converts OpenAI-style messages to Anthropic format.
+
+        Splits the system prompt out (Anthropic accepts ``system`` as a
+        top-level field, not a message), unpacks ``tool_calls`` into
+        ``tool_use`` content blocks on assistant turns, and merges
+        consecutive ``tool`` results into one user-role message of
+        ``tool_result`` blocks (which Anthropic requires).
+
+        Args:
+            messages: OpenAI-shaped message list.
+
+        Returns:
+            A two-tuple ``(system, messages)`` where ``system`` is the
+            extracted system prompt (empty string when none was set) and
+            ``messages`` is the Anthropic-shaped message list.
+        """
         system = ""
         result: list[dict[str, Any]] = []
 
@@ -191,6 +300,17 @@ class LLMClient:
         return system, result
 
     def _to_anthropic_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Converts OpenAI-style tool definitions to Anthropic format.
+
+        Args:
+            tools: OpenAI-style tool definitions, each wrapping a
+                ``function`` object with ``name``, ``description``, and
+                ``parameters``.
+
+        Returns:
+            A list of Anthropic-style tool definitions with ``name``,
+            ``description``, and ``input_schema`` fields.
+        """
         converted = []
         for tool in tools:
             fn = tool["function"]
@@ -202,7 +322,18 @@ class LLMClient:
         return converted
 
     def _from_anthropic_response(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Normalize Anthropic response into OpenAI format so downstream code is unchanged."""
+        """Normalizes an Anthropic response into the OpenAI shape.
+
+        Joins text content blocks into a single ``content`` string,
+        repackages ``tool_use`` blocks as OpenAI ``tool_calls`` entries,
+        and maps the ``stop_reason`` to a matching ``finish_reason``.
+
+        Args:
+            data: The decoded Anthropic ``messages`` response body.
+
+        Returns:
+            An OpenAI ``chat.completion``-shaped dict with a single choice.
+        """
         text_parts = []
         tool_calls = []
 
@@ -237,6 +368,18 @@ class LLMClient:
     # -- Shared accessors (work with normalized OpenAI format) -----------------
 
     def extract_message(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Pulls the assistant message out of an OpenAI-shaped response.
+
+        Args:
+            response: A response body in OpenAI ``chat.completion`` shape.
+
+        Returns:
+            The first ``choices[0].message`` dict.
+
+        Raises:
+            LLMResponseError: When the response is missing the expected
+                fields.
+        """
         try:
             return response["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as e:
@@ -245,12 +388,27 @@ class LLMClient:
             ) from e
 
     def has_tool_calls(self, message: dict[str, Any]) -> bool:
+        """Returns ``True`` when the message contains any ``tool_calls``.
+
+        Args:
+            message: An assistant message dict.
+        """
         return bool(message.get("tool_calls"))
 
     def get_tool_calls(self, message: dict[str, Any]) -> list[dict[str, Any]]:
+        """Returns the ``tool_calls`` list, or an empty list when absent.
+
+        Args:
+            message: An assistant message dict.
+        """
         return message.get("tool_calls", [])
 
     def get_content(self, message: dict[str, Any]) -> str:
+        """Returns the message text content, or empty string when absent.
+
+        Args:
+            message: An assistant message dict.
+        """
         return message.get("content") or ""
 
 

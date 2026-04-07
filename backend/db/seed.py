@@ -1,3 +1,10 @@
+"""Static host inventory and seeding routine for the ``hosts`` table.
+
+Populates the database with the same fixed set of GPU/inference/storage
+nodes the simulator generates alerts for. Idempotent: re-running on an
+already-seeded database is a no-op.
+"""
+
 import json
 import logging
 import random
@@ -36,6 +43,13 @@ HOSTS = [
 
 
 async def seed_host_data() -> None:
+    """Inserts the canonical host inventory if the table is empty.
+
+    Generates a random uptime and metadata blob for each host (kernel
+    version, NVIDIA driver, network speed, IPMI IP) so the dashboard has
+    realistic-looking host detail. A no-op when the ``hosts`` table is
+    already populated, so it is safe to call on every startup.
+    """
     db = await get_db()
     count = (await db.execute_fetchall("SELECT COUNT(*) as c FROM hosts"))[0]["c"]
     if count > 0:

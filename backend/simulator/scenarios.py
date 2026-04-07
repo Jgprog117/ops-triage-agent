@@ -1,3 +1,13 @@
+"""Multi-step failure scenarios used by the alert simulator.
+
+Each scenario function returns a fresh :class:`Scenario` describing a
+realistic correlated failure pattern (thermal cascade, GPU hardware
+failure, network partition, storage degradation, power anomaly). The
+simulator picks one at random with probability
+:attr:`Settings.SCENARIO_PROBABILITY` and emits its alerts on the
+configured per-step delays.
+"""
+
 from __future__ import annotations
 
 import random
@@ -8,6 +18,23 @@ from backend.simulator.components import RACK_HOSTS, RACKS
 
 @dataclass
 class ScenarioAlert:
+    """A single alert step within a multi-step scenario.
+
+    Attributes:
+        delay_seconds: How long to wait after the previous step before
+            emitting this alert. Ignored for the first step.
+        severity: Alert severity (``info``, ``warning``, ``critical``).
+        category: Alert category (e.g., ``thermal``).
+        component: Specific component name.
+        host: Hostname the alert is raised on.
+        rack: Rack identifier.
+        metric_name: Metric whose threshold was crossed.
+        metric_value: The observed value to report.
+        threshold: The threshold the value crossed.
+        message: Human-readable alert message.
+        raw_data: Free-form additional context.
+    """
+
     delay_seconds: float
     severity: str
     category: str
@@ -23,12 +50,29 @@ class ScenarioAlert:
 
 @dataclass
 class Scenario:
+    """A named multi-step failure pattern.
+
+    Attributes:
+        name: Stable identifier (used in audit logs and scenario stats).
+        description: Human-readable summary of the pattern.
+        alerts: Ordered list of alert steps to emit.
+    """
+
     name: str
     description: str
     alerts: list[ScenarioAlert]
 
 
 def thermal_cascade() -> Scenario:
+    """Builds a CRAC-failure thermal cascade scenario.
+
+    Picks a random GPU rack and emits a CRAC inlet warning, GPU thermal
+    throttling on a host in that rack, throttling on a second host, and
+    finally a critical rack ambient temperature alert.
+
+    Returns:
+        A freshly randomized :class:`Scenario`.
+    """
     rack = random.choice(["rack-12", "rack-14", "rack-18"])
     hosts = RACK_HOSTS[rack]
     crac_unit = f"CRAC-Unit-{random.randint(1, 4)}"
@@ -96,6 +140,15 @@ def thermal_cascade() -> Scenario:
 
 
 def gpu_hardware_failure() -> Scenario:
+    """Builds a GPU hardware failure cascade scenario.
+
+    Starts with rising ECC errors on a single GPU, escalates to an
+    uncorrectable ``GPU fallen off bus`` event, then NVLink errors on a
+    peer GPU, and finally a node-drain notice.
+
+    Returns:
+        A freshly randomized :class:`Scenario`.
+    """
     rack = random.choice(["rack-12", "rack-14", "rack-18"])
     hosts = RACK_HOSTS[rack]
     host = random.choice(hosts)
@@ -163,6 +216,14 @@ def gpu_hardware_failure() -> Scenario:
 
 
 def network_partition() -> Scenario:
+    """Builds a top-of-rack switch failure scenario.
+
+    Sequence: port flapping warning, packet loss critical, multi-node
+    latency spike, then a NCCL training-job stall.
+
+    Returns:
+        A freshly randomized :class:`Scenario`.
+    """
     rack = random.choice(RACKS)
     hosts = RACK_HOSTS[rack]
     switch = f"TOR-Switch-{rack}"
@@ -228,6 +289,15 @@ def network_partition() -> Scenario:
 
 
 def storage_degradation() -> Scenario:
+    """Builds a storage degradation scenario impacting training checkpoints.
+
+    Starts with SMART warnings on a storage host, escalates to I/O
+    latency, then to checkpoint write failures on a downstream GPU host
+    and finally a potential data loss alert.
+
+    Returns:
+        A freshly randomized :class:`Scenario`.
+    """
     rack = "rack-16"
     hosts = RACK_HOSTS[rack]
     storage_host = random.choice([h for h in hosts if "storage" in h])
@@ -295,6 +365,16 @@ def storage_degradation() -> Scenario:
 
 
 def power_anomaly() -> Scenario:
+    """Builds a recoverable PDU/UPS power anomaly scenario.
+
+    Sequence: voltage fluctuation warning, UPS battery engagement, load
+    shed warning, and finally an ``info``-level power-restored event.
+    Used to exercise the agent's classification of recoverable
+    incidents that should NOT escalate.
+
+    Returns:
+        A freshly randomized :class:`Scenario`.
+    """
     rack = random.choice(RACKS)
     pdu = f"PDU-{'AB'[random.randint(0, 1)]}{random.randint(1, 2)}"
     hosts = RACK_HOSTS[rack]
@@ -369,5 +449,11 @@ SCENARIOS = [
 
 
 def pick_scenario() -> Scenario:
+    """Returns a freshly randomized scenario selected uniformly at random.
+
+    Returns:
+        A new :class:`Scenario` produced by one of the registered
+        scenario generators in :data:`SCENARIOS`.
+    """
     generator = random.choice(SCENARIOS)
     return generator()

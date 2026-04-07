@@ -1,8 +1,21 @@
+"""Background alert generator that drives the rest of the system.
+
+The simulator runs forever in a single asyncio task started from the
+application lifespan. On each iteration it sleeps for a randomized
+interval and then either emits a single isolated alert or runs a
+multi-step :class:`Scenario` from :mod:`backend.simulator.scenarios`.
+
+The simulator does not import the triage agent directly; the triage
+function is plugged in through :func:`set_triage_callback` so the
+import graph stays acyclic.
+"""
+
 import asyncio
 import logging
 import random
 import uuid
 from datetime import datetime, timezone
+from typing import Awaitable, Callable
 
 from backend.config import settings
 from backend.db.database import insert_alert, insert_audit_log
@@ -19,16 +32,38 @@ from backend.sse.broadcaster import broadcast_alert
 
 logger = logging.getLogger(__name__)
 
-_triage_callback = None  # set by triage agent module to avoid circular imports
+# Set by the triage agent module via set_triage_callback to avoid a circular import.
+_triage_callback: Callable[[dict], Awaitable[object]] | None = None
 _background_tasks: set[asyncio.Task] = set()
 
 
-def set_triage_callback(callback) -> None:
+def set_triage_callback(callback: Callable[[dict], Awaitable[object]]) -> None:
+    """Registers the triage entry point invoked for warning/critical alerts.
+
+    Called once at startup from :func:`backend.main.lifespan`. Kept as
+    a setter rather than an import so the simulator package does not
+    have to know about the agent package.
+
+    Args:
+        callback: An ``async`` function taking the alert dict and
+            performing triage. Its return value is discarded.
+    """
     global _triage_callback
     _triage_callback = callback
 
 
 def _generate_isolated_alert() -> dict:
+    """Builds a single, randomly chosen alert with no scenario context.
+
+    Picks a random category, metric, rack, host, and severity (weighted
+    40/40/20 across info/warning/critical), samples a metric value
+    consistent with that severity, and selects a category-appropriate
+    component name.
+
+    Returns:
+        A fully populated alert dict ready for insertion via
+        :func:`_emit_alert`.
+    """
     category = random.choice(list(CATEGORY_METRICS.keys()))
     metric = random.choice(CATEGORY_METRICS[category])
     rack = random.choice(RACKS)
@@ -87,6 +122,18 @@ def _generate_isolated_alert() -> dict:
 
 
 async def _emit_alert(alert: dict) -> None:
+    """Persists, broadcasts, and (when warranted) triages a single alert.
+
+    Inserts the alert into the database, writes an audit-log entry,
+    pushes a ``new_alert`` envelope onto the global SSE feed, and — for
+    ``warning`` and ``critical`` alerts — schedules a triage task on the
+    registered callback. Triage tasks are kept in
+    :data:`_background_tasks` so they are not garbage-collected before
+    completing.
+
+    Args:
+        alert: A fully populated alert dict.
+    """
     await insert_alert(alert)
     await insert_audit_log("alert_received", alert["id"], {"severity": alert["severity"], "category": alert["category"]})
     await broadcast_alert({"type": "new_alert", "alert": alert})
@@ -101,6 +148,14 @@ async def _emit_alert(alert: dict) -> None:
 
 
 async def _run_scenario() -> None:
+    """Picks a scenario and emits its alerts on the configured schedule.
+
+    The first step fires immediately; subsequent steps wait for the
+    larger of the step's own ``delay_seconds`` and the configured
+    minimum interval, so scenarios cannot fire faster than the global
+    pacing config allows. Each emitted alert carries scenario metadata
+    in its ``raw_data`` so downstream tooling can identify it.
+    """
     scenario = pick_scenario()
     logger.info("Starting scenario: %s — %s", scenario.name, scenario.description)
 
@@ -130,6 +185,15 @@ async def _run_scenario() -> None:
 
 
 async def alert_simulator() -> None:
+    """Runs the alert generator loop until cancelled.
+
+    On each iteration, sleeps a uniformly-random number of seconds in
+    ``[ALERT_INTERVAL_MIN, ALERT_INTERVAL_MAX]`` and then either runs a
+    multi-step scenario (with probability
+    :attr:`Settings.SCENARIO_PROBABILITY`) or emits a single isolated
+    alert. Exits cleanly on :class:`asyncio.CancelledError`; other
+    exceptions are logged and the loop sleeps briefly before resuming.
+    """
     logger.info(
         "Alert simulator started (interval: %d-%ds, scenario probability: %.0f%%)",
         settings.ALERT_INTERVAL_MIN,

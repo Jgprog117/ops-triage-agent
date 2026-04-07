@@ -1,3 +1,9 @@
+"""Knowledge-base Q&A endpoint backed by RAG over the runbook collection.
+
+Combines the top-N runbook chunks for a question into an LLM prompt and
+returns the answer plus a deduplicated list of sources for citation.
+"""
+
 import asyncio
 import logging
 
@@ -19,6 +25,21 @@ Rules:
 
 
 async def answer_question(query: str) -> dict:
+    """Answers a free-form question using the runbook RAG index.
+
+    Searches for the top 5 most relevant chunks, formats them into a
+    single context block, and asks the LLM to compose an answer using
+    :data:`QA_SYSTEM_PROMPT`. LLM failures are caught and surfaced as a
+    user-facing error message rather than raised.
+
+    Args:
+        query: The user's natural-language question.
+
+    Returns:
+        A dict with ``answer`` (the LLM response, or a fallback message)
+        and ``sources`` (a deduplicated list of cited runbook entries
+        with ``source``, ``section``, and ``relevance_score``).
+    """
     loop = asyncio.get_running_loop()
     chunks = await loop.run_in_executor(None, lambda: search_runbooks(query, n_results=5))
 

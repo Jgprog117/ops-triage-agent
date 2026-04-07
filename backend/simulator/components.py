@@ -1,8 +1,29 @@
+"""Static datacenter inventory and per-metric thresholds for the simulator.
+
+Defines the racks, hosts, components (CRAC units, PDUs, GPUs), and per-
+category metric profiles that the alert simulator and scenario generators
+sample from. Editing values here directly changes what the simulator
+produces.
+"""
+
 from dataclasses import dataclass
 
 
 @dataclass
 class MetricProfile:
+    """Per-metric thresholds and normal ranges used by the simulator.
+
+    Attributes:
+        name: Metric name as it appears on alerts.
+        unit: Display unit (``°C``, ``%``, ...).
+        normal_min: Lower bound of the no-alert normal range.
+        normal_max: Upper bound of the no-alert normal range.
+        warning_threshold: Value at which a warning alert is generated.
+            For metrics where lower is worse this should be interpreted
+            as the floor before warning.
+        critical_threshold: Value at which a critical alert is generated.
+    """
+
     name: str
     unit: str
     normal_min: float

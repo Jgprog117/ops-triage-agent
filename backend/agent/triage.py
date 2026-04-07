@@ -1,3 +1,12 @@
+"""Tool-use loop that drives an LLM through the triage of a single alert.
+
+The :func:`triage_alert` coroutine is the heart of the system. Each new
+alert from the simulator becomes one invocation of this loop, which sends
+messages to the LLM, executes tool calls returned by the model, and parses
+the final JSON triage report. Every step is broadcast over SSE so the
+dashboard can render the agent's reasoning live.
+"""
+
 import asyncio
 import json
 import logging
@@ -29,6 +38,15 @@ _semaphore = asyncio.Semaphore(settings.TRIAGE_CONCURRENCY)
 
 
 def _build_user_message(alert: dict) -> str:
+    """Formats an alert dict into the initial user message for the LLM.
+
+    Args:
+        alert: The alert row as returned by the database, including
+            ``raw_data`` and the standard schema fields.
+
+    Returns:
+        A multi-line string ready to be placed in a ``user``-role message.
+    """
     return f"""A new alert has been received. Triage it.
 
 Alert details:
@@ -56,6 +74,21 @@ async def _broadcast_step(
     tool_output: Any = None,
     triage_result: TriageResult | None = None,
 ) -> None:
+    """Builds a step payload and pushes it to SSE subscribers.
+
+    Args:
+        alert_id: The id of the alert being triaged. Used as the SSE
+            channel key.
+        step_num: Monotonically increasing step counter for this triage.
+        step_type: One of ``tool_call``, ``tool_result``, or
+            ``final_triage``.
+        tool_name: Name of the tool when ``step_type`` is a tool event.
+        tool_input: Parsed arguments for tool-call events.
+        tool_output: Tool result body for tool-result events. Already
+            truncated by the caller when needed.
+        triage_result: The final :class:`TriageResult` for ``final_triage``
+            events.
+    """
     step_data = {
         "alert_id": alert_id,
         "step": step_num,
@@ -70,7 +103,17 @@ async def _broadcast_step(
 
 
 async def _safe_update_status(alert_id: str, status: str) -> None:
-    """Update alert status, swallowing DB errors to avoid masking the original exception."""
+    """Updates an alert's triage status while swallowing DB errors.
+
+    Used in error-handling paths so that a downstream database failure
+    cannot mask the original LLM or runtime exception that triggered the
+    update.
+
+    Args:
+        alert_id: The alert id whose status to update.
+        status: The new ``triage_status`` value (e.g. ``error``,
+            ``parse_error``, ``retry_pending``).
+    """
     try:
         await update_alert_triage_status(alert_id, status)
     except Exception:
@@ -78,6 +121,29 @@ async def _safe_update_status(alert_id: str, status: str) -> None:
 
 
 async def triage_alert(alert: dict) -> TriageResult | None:
+    """Runs the full LLM triage loop for one alert.
+
+    The coroutine is gated by a process-wide semaphore (size
+    :attr:`Settings.TRIAGE_CONCURRENCY`) and runs for at most
+    :attr:`Settings.TRIAGE_MAX_STEPS` LLM iterations. On each iteration the
+    LLM either calls a tool (whose result is fed back into the next
+    iteration) or returns a final JSON triage report. Parse failures are
+    retried once with a stricter prompt; persistent failures fall back to
+    an ``acknowledged`` placeholder so the alert never gets stuck.
+
+    All LLM-layer exceptions and the database error are caught and
+    translated into ``triage_status`` updates plus a placeholder
+    :class:`TriageResult`, so the caller does not need to handle them.
+
+    Args:
+        alert: The alert dict as inserted by the simulator. Must contain
+            at least ``id``, ``severity``, ``message``, and the standard
+            triage fields used by :func:`_build_user_message`.
+
+    Returns:
+        The completed :class:`TriageResult`, or ``None`` if an unrecoverable
+        database error prevented any meaningful processing.
+    """
     async with _semaphore:
         alert_id = alert["id"]
         logger.info("Starting triage for alert %s (%s: %s)",
@@ -219,6 +285,18 @@ async def triage_alert(alert: dict) -> TriageResult | None:
 
 
 def _error_result(alert_id: str, alert: dict, reason: str) -> TriageResult:
+    """Builds a fallback :class:`TriageResult` for error paths.
+
+    Args:
+        alert_id: The id of the alert that failed to triage.
+        alert: The alert dict, used for its ``message`` field.
+        reason: Short description of why triage failed. Surfaces in the
+            ``root_cause_hypothesis`` field of the placeholder result.
+
+    Returns:
+        An ``acknowledged``-classified :class:`TriageResult` carrying the
+        failure reason in its English and Japanese summaries.
+    """
     return TriageResult(
         classification="acknowledged",
         root_cause_hypothesis=reason,

@@ -1,3 +1,12 @@
+"""Chroma-backed RAG index over the runbook markdown files.
+
+The index is rebuilt automatically on first start (or when an
+incompatible on-disk format is detected) by chunking each markdown file
+into ~800-character pieces, embedding them with ``all-MiniLM-L6-v2``,
+and persisting them to a local Chroma collection. After init, callers
+can search via :func:`search_runbooks`.
+"""
+
 import logging
 from pathlib import Path
 
@@ -19,6 +28,22 @@ CHUNK_OVERLAP = 200    # Characters (~50 tokens)
 
 
 def _chunk_text(text: str, source: str) -> list[dict]:
+    """Splits a markdown document into overlapping fixed-size chunks.
+
+    Tracks the most recent ``## Section`` heading so each chunk can be
+    tagged with its containing section. Chunks are emitted whenever the
+    accumulated character count crosses :data:`CHUNK_SIZE`, with the
+    trailing :data:`CHUNK_OVERLAP` characters carried into the next
+    chunk to preserve continuity across boundaries.
+
+    Args:
+        text: The full markdown document text.
+        source: The filename used to tag every emitted chunk.
+
+    Returns:
+        A list of chunk dicts, each with ``text``, ``source`` and
+        ``section`` keys.
+    """
     chunks = []
     lines = text.split("\n")
     current_section = "overview"
@@ -63,6 +88,17 @@ def _chunk_text(text: str, source: str) -> list[dict]:
 
 
 def init_knowledge_base() -> None:
+    """Initializes (and if necessary populates) the runbook RAG index.
+
+    Opens or creates the persistent Chroma collection at
+    :attr:`Settings.CHROMA_PATH`. If the on-disk format is incompatible
+    with the installed Chroma version, the directory is wiped and
+    recreated. When the collection is empty after init, every markdown
+    file under :data:`RUNBOOKS_DIR` is chunked and embedded.
+
+    This is a synchronous, CPU/disk-heavy operation; callers in async
+    contexts should run it via :func:`asyncio.to_thread`.
+    """
     global _collection, _client
 
     chroma_path = Path(settings.CHROMA_PATH)
@@ -117,6 +153,18 @@ def init_knowledge_base() -> None:
 
 
 def search_runbooks(query: str, n_results: int = 3) -> list[dict]:
+    """Performs a semantic search over the runbook collection.
+
+    Args:
+        query: Natural-language query text.
+        n_results: Maximum number of chunks to return.
+
+    Returns:
+        A list of chunk dicts ordered by similarity, each with ``text``,
+        ``source``, ``section``, and a ``relevance_score`` in ``[0, 1]``
+        derived from the cosine distance. Returns an empty list when the
+        collection has not been initialized.
+    """
     if _collection is None:
         logger.warning("Knowledge base not initialized")
         return []

@@ -20,9 +20,20 @@ class LLMServerError(LLMError):
 
 
 class LLMResponseError(LLMError):
-    """LLM returned a malformed or unparseable response."""
+    """LLM returned a malformed or unparseable response.
 
-    def __init__(self, message: str, raw_response: dict | None = None):
+    Attributes:
+        raw_response: The decoded JSON body of the offending response, when
+            available, for debugging.
+    """
+
+    def __init__(self, message: str, raw_response: dict | None = None) -> None:
+        """Inits LLMResponseError with the failure message and raw payload.
+
+        Args:
+            message: Human-readable description of the failure.
+            raw_response: The decoded LLM response body, if any.
+        """
         super().__init__(message)
         self.raw_response = raw_response
 
@@ -42,9 +53,17 @@ class ConfigurationError(TriageAgentError):
 class ParseError(TriageAgentError):
     """Failed to parse JSON from LLM output.
 
-    Attaches the raw content for debugging.
+    Attributes:
+        raw_content: The raw LLM text that failed to parse, retained so the
+            caller can log or surface it for debugging.
     """
 
-    def __init__(self, message: str, raw_content: str | None = None):
+    def __init__(self, message: str, raw_content: str | None = None) -> None:
+        """Inits ParseError with the failure message and the raw LLM text.
+
+        Args:
+            message: Human-readable description of the parse failure.
+            raw_content: The original LLM text that could not be parsed.
+        """
         super().__init__(message)
         self.raw_content = raw_content
