@@ -1,3 +1,16 @@
+"""In-process pub/sub for streaming alert and triage events to SSE clients.
+
+The broadcaster keeps two subscriber sets:
+
+* a global alert feed every dashboard subscribes to, and
+* a per-alert triage step feed used to drive the live agent reasoning UI.
+
+Triage steps are also retained in a bounded in-memory history so that a
+client reconnecting after a brief disconnect can replay the recent steps
+or skip straight to the final result. Eviction is by TTL and absolute
+size, both configured via :class:`backend.config.Settings`.
+"""
+
 import asyncio
 import logging
 import time
@@ -15,7 +28,14 @@ _triage_timestamps: dict[str, float] = {}  # alert_id -> first insertion time
 
 
 def _evict_old_history() -> None:
-    """Remove old triage histories by TTL and max size."""
+    """Removes triage histories that exceed the TTL or size budgets.
+
+    Eviction is two-pass: anything older than
+    :attr:`Settings.SSE_HISTORY_TTL_SECONDS` is dropped first, and then
+    the oldest entries are dropped one at a time until the dictionary is
+    at most :attr:`Settings.SSE_HISTORY_MAX_ALERTS` entries. Insertion
+    order is preserved by Python ``dict`` semantics.
+    """
     now = time.monotonic()
     ttl = settings.SSE_HISTORY_TTL_SECONDS
     max_alerts = settings.SSE_HISTORY_MAX_ALERTS
@@ -37,6 +57,13 @@ def _evict_old_history() -> None:
 
 
 def subscribe_alerts() -> asyncio.Queue[dict[str, Any]]:
+    """Registers a new subscriber to the global alert feed.
+
+    Returns:
+        A bounded :class:`asyncio.Queue` that will receive every event
+        broadcast through :func:`broadcast_alert` until the caller
+        unsubscribes.
+    """
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
     _alert_subscribers.add(queue)
     logger.debug("Alert subscriber added (total: %d)", len(_alert_subscribers))
@@ -44,11 +71,24 @@ def subscribe_alerts() -> asyncio.Queue[dict[str, Any]]:
 
 
 def unsubscribe_alerts(queue: asyncio.Queue[dict[str, Any]]) -> None:
+    """Removes a queue from the global alert subscriber set.
+
+    Args:
+        queue: A queue previously returned by :func:`subscribe_alerts`.
+    """
     _alert_subscribers.discard(queue)
     logger.debug("Alert subscriber removed (total: %d)", len(_alert_subscribers))
 
 
 async def broadcast_alert(alert_data: dict[str, Any]) -> None:
+    """Pushes an event to every global alert subscriber.
+
+    Slow clients whose queues fill up are silently evicted to keep the
+    broadcaster from blocking on a stuck consumer.
+
+    Args:
+        alert_data: An arbitrary JSON-serializable dict to enqueue.
+    """
     for queue in _alert_subscribers.copy():
         try:
             queue.put_nowait(alert_data)
@@ -58,7 +98,20 @@ async def broadcast_alert(alert_data: dict[str, Any]) -> None:
 
 
 def subscribe_triage(alert_id: str) -> asyncio.Queue[dict[str, Any]]:
-    """Replays history for late-joining clients, then streams new steps."""
+    """Subscribes to the per-alert triage step feed.
+
+    Late-joining clients are replayed history immediately: if triage is
+    already complete, only the final step is replayed; otherwise the most
+    recent 20 steps are pushed before the queue is registered for future
+    updates.
+
+    Args:
+        alert_id: The alert id whose triage stream to follow.
+
+    Returns:
+        A bounded :class:`asyncio.Queue` already primed with replayed
+        history.
+    """
     if alert_id not in _triage_subscribers:
         _triage_subscribers[alert_id] = set()
 
@@ -79,6 +132,12 @@ def subscribe_triage(alert_id: str) -> asyncio.Queue[dict[str, Any]]:
 
 
 def unsubscribe_triage(alert_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
+    """Removes a triage subscriber and cleans up empty subscriber sets.
+
+    Args:
+        alert_id: The alert id the queue was registered for.
+        queue: A queue previously returned by :func:`subscribe_triage`.
+    """
     if alert_id in _triage_subscribers:
         _triage_subscribers[alert_id].discard(queue)
         if not _triage_subscribers[alert_id]:
@@ -86,6 +145,17 @@ def unsubscribe_triage(alert_id: str, queue: asyncio.Queue[dict[str, Any]]) -> N
 
 
 async def broadcast_triage_step(alert_id: str, step_data: dict[str, Any]) -> None:
+    """Records a triage step and pushes it to subscribers.
+
+    The step is appended to the per-alert history (with TTL/size eviction
+    for older entries), wrapped as a ``triage_update`` envelope on the
+    global alert feed so the dashboard list can update progress, and
+    pushed to every per-alert subscriber.
+
+    Args:
+        alert_id: The alert id the step belongs to.
+        step_data: The step payload as built by the triage agent.
+    """
     # Evict old entries before adding new ones
     _evict_old_history()
 
@@ -111,4 +181,14 @@ async def broadcast_triage_step(alert_id: str, step_data: dict[str, Any]) -> Non
 
 
 def get_triage_history(alert_id: str) -> list[dict[str, Any]]:
+    """Returns the retained triage step history for an alert.
+
+    Args:
+        alert_id: The alert id to look up.
+
+    Returns:
+        The list of step payloads, or an empty list when no history is
+        retained for the given alert (either because it never existed or
+        because it has been evicted).
+    """
     return _triage_history.get(alert_id, [])

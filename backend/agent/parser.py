@@ -1,3 +1,11 @@
+"""Parsers for LLM tool arguments and final triage reports.
+
+The triage agent receives free-form text from the model and must coerce it
+into structured Python objects. This module is intentionally lenient: real
+models occasionally wrap JSON in code fences or prose, and these helpers try
+several extraction strategies before giving up.
+"""
+
 import json
 import logging
 import re
@@ -10,6 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 def parse_tool_arguments(raw: str) -> dict[str, Any] | None:
+    """Parses a tool-call ``arguments`` string into a Python dict.
+
+    Tries a strict ``json.loads`` first. If that fails, falls back to
+    :func:`extract_json_from_text` which handles fenced and embedded JSON.
+
+    Args:
+        raw: The raw arguments string emitted by the LLM. May be ``None``
+            or non-JSON text in degenerate cases.
+
+    Returns:
+        The parsed dict on success, or ``None`` if no JSON object could be
+        extracted from the input.
+    """
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -25,7 +46,20 @@ def parse_tool_arguments(raw: str) -> dict[str, Any] | None:
 
 
 def _extract_outermost_json(text: str) -> str | None:
-    """Walk the string and extract the first balanced {...} substring."""
+    """Extracts the first balanced ``{...}`` substring from ``text``.
+
+    Walks the string character-by-character tracking brace depth and string
+    state so that braces inside JSON string literals do not confuse the
+    matcher. Used as a last-resort extractor for nested JSON wrapped in
+    arbitrary prose.
+
+    Args:
+        text: The source text to scan.
+
+    Returns:
+        The matched substring including its outer braces, or ``None`` when
+        no balanced object is found.
+    """
     start = text.find("{")
     if start == -1:
         return None
@@ -64,6 +98,18 @@ def _extract_outermost_json(text: str) -> str | None:
 
 
 def extract_json_from_text(text: str) -> dict[str, Any] | None:
+    """Extracts a JSON object from arbitrary LLM text.
+
+    Tries, in order: a direct ``json.loads`` of the trimmed text, fenced
+    code blocks (\\`\\`\\`json ... \\`\\`\\` and unlabelled \\`\\`\\` ... \\`\\`\\`),
+    and finally a balanced-brace walk via :func:`_extract_outermost_json`.
+
+    Args:
+        text: Free-form text that should contain a single JSON object.
+
+    Returns:
+        The parsed dict on success, or ``None`` if no candidate parsed.
+    """
     text = text.strip()
 
     # Try direct parse first
@@ -98,7 +144,24 @@ def extract_json_from_text(text: str) -> dict[str, Any] | None:
 
 
 def parse_triage_result(content: str) -> TriageResult:
-    """Parse LLM output into a TriageResult. Raises ParseError on failure."""
+    """Parses an LLM final-message string into a :class:`TriageResult`.
+
+    Extracts JSON via :func:`extract_json_from_text`, normalizes a few
+    field-name variations (e.g., ``root_cause`` is accepted as an alias of
+    ``root_cause_hypothesis``), and constructs the Pydantic model.
+
+    Args:
+        content: The raw LLM message body, expected to contain the triage
+            JSON either standalone or in a fenced block.
+
+    Returns:
+        A populated :class:`TriageResult`.
+
+    Raises:
+        ParseError: If no JSON object can be extracted, or if extracted
+            data fails to validate against :class:`TriageResult`. The raw
+            input is attached to the exception for downstream logging.
+    """
     data = extract_json_from_text(content)
     if data is None:
         raise ParseError("Could not extract triage JSON from response", raw_content=content)

@@ -1,3 +1,16 @@
+"""Tool implementations exposed to the triage LLM.
+
+Each public function in this module is registered in :data:`TOOL_REGISTRY`
+and surfaced to the LLM via the schemas in :mod:`backend.agent.prompts`.
+Tools return JSON-serialized strings — the LLM treats them as opaque text,
+but the structure matters because the model is prompted to look for fields
+like ``open_incident_id`` and ``already_escalated``.
+
+A deliberate dedupe contract is enforced across these tools: alerts already
+attached to an open incident must be re-attached rather than duplicated, and
+escalations refuse to fire twice on the same incident.
+"""
+
 import asyncio
 import hashlib
 import hmac
@@ -35,6 +48,28 @@ async def query_recent_alerts(
     severity: str | None = None,
     exclude_id: str | None = None,
 ) -> str:
+    """Returns recent alerts matching the given filters as a JSON string.
+
+    The returned payload includes a ``count`` and an ``alerts`` array; each
+    alert carries an ``open_incident_id`` field. When any alert is already
+    attached to an open incident, the response also includes
+    ``distinct_open_incidents`` and a ``dedupe_hint`` instructing the agent
+    to attach instead of duplicating.
+
+    Args:
+        minutes_ago: Lookback window in minutes.
+        rack: Optional rack filter (e.g., ``rack-12``).
+        host: Optional hostname filter.
+        category: Optional alert category filter.
+        severity: Optional severity filter (``info``, ``warning``,
+            ``critical``).
+        exclude_id: Optional alert id to omit from results, typically the
+            id of the alert currently being triaged.
+
+    Returns:
+        A JSON-encoded string with the query results, suitable for direct
+        inclusion in a tool-result message.
+    """
     alerts = await get_recent_alerts(
         minutes_ago=minutes_ago,
         rack=rack,
@@ -80,6 +115,19 @@ async def query_recent_alerts(
 
 
 async def search_runbooks_tool(query: str) -> str:
+    """Performs a semantic search over the runbook knowledge base.
+
+    Runs the synchronous Chroma query inside a default executor so the
+    event loop is not blocked.
+
+    Args:
+        query: Free-form natural-language query describing the issue.
+
+    Returns:
+        A JSON-encoded string containing the top 3 chunks (each with
+        ``source``, ``section``, ``content``, and ``relevance``), or a
+        message payload when no chunks are returned.
+    """
     loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(None, lambda: kb_search(query, n_results=3))
 
@@ -99,6 +147,17 @@ async def search_runbooks_tool(query: str) -> str:
 
 
 async def get_host_info(host: str) -> str:
+    """Returns hardware and operational metadata for a host.
+
+    Args:
+        host: Hostname to look up in the host inventory.
+
+    Returns:
+        A JSON-encoded string with hardware specs (CPU, GPU, memory),
+        rack/datacenter location, current status, uptime, and the most
+        recent incident id. When the host is unknown, returns a JSON
+        payload with an ``error`` field instead.
+    """
     host_data = await get_host(host)
 
     if not host_data:
@@ -126,6 +185,22 @@ async def find_open_incidents(
     category: str | None = None,
     minutes_ago: int = 60,
 ) -> str:
+    """Looks up open incidents whose primary alert matches the filters.
+
+    The agent must call this before :func:`create_incident_tool` to avoid
+    creating duplicate incidents for the same scenario.
+
+    Args:
+        rack: Optional rack filter.
+        host: Optional hostname filter.
+        category: Optional alert category filter.
+        minutes_ago: How far back to search, in minutes.
+
+    Returns:
+        A JSON-encoded string with a ``count`` and an ``incidents`` array.
+        When matches exist, the response includes a directive to use
+        :func:`attach_to_incident_tool` instead of creating a duplicate.
+    """
     incidents = await find_open_incidents_for_alert(
         rack=rack, host=host, category=category, minutes_ago=minutes_ago,
     )
@@ -165,6 +240,22 @@ async def find_open_incidents(
 
 
 async def attach_to_incident_tool(incident_id: str, alert_id: str) -> str:
+    """Attaches an alert to an existing open incident.
+
+    Persists the relationship in the database and writes an audit-log
+    entry. Reuses the incident's existing escalation status — the agent
+    must NOT call :func:`escalate_tool` after attaching.
+
+    Args:
+        incident_id: The id of the open incident to attach to.
+        alert_id: The id of the alert being triaged.
+
+    Returns:
+        A JSON-encoded string confirming the attachment, including the
+        updated correlated alert list and the incident's escalation flag,
+        or an ``error`` payload when the incident cannot be found or is
+        not in an open state.
+    """
     updated = await attach_alert_to_incident(incident_id, alert_id)
     if updated is None:
         return json.dumps({
@@ -200,6 +291,30 @@ async def create_incident_tool(
     assigned_team: str | None = None,
     primary_alert_id: str | None = None,
 ) -> str:
+    """Creates a new incident record and writes an audit-log entry.
+
+    Generates a fresh ``INC-XXXXXXXXXXXX`` id, persists the incident, and
+    returns the canonical metadata to the agent. The caller must have
+    confirmed via :func:`find_open_incidents` that no matching open
+    incident already exists; this tool does not check for duplicates.
+
+    Args:
+        title: Short human-readable incident title.
+        severity: Incident severity (``P1``..``P4``).
+        summary: One-paragraph incident summary.
+        root_cause: Optional root-cause analysis text.
+        remediation_steps: Optional list of remediation steps in order.
+        correlated_alert_ids: Optional list of correlated alert ids.
+        assigned_team: Optional team name. Defaults to
+            :attr:`Settings.DEFAULT_TEAM`.
+        primary_alert_id: The id of the alert being triaged. Becomes the
+            canonical link for future dedupe lookups. If omitted, falls
+            back to the first entry in ``correlated_alert_ids``.
+
+    Returns:
+        A JSON-encoded string with the new ``incident_id``, ``severity``,
+        ``status``, ``assigned_team``, and a confirmation message.
+    """
     incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
     correlated = correlated_alert_ids or []
     primary = primary_alert_id or (correlated[0] if correlated else None)
@@ -245,6 +360,29 @@ async def escalate_tool(
     urgency: str,
     notification_channels: list[str] | None = None,
 ) -> str:
+    """Pages the on-call team for an incident.
+
+    Refuses to escalate twice on the same incident — if the incident's
+    ``escalated`` flag is already set, this returns an
+    ``already_escalated`` payload without contacting any channel. On a
+    fresh escalation, an escalation row is inserted, the incident is
+    marked escalated, an audit log is written, and the configured webhook
+    is invoked with HMAC-signed payload and retry/DLQ semantics.
+
+    Args:
+        incident_id: The id of the incident to escalate.
+        reason: Human-readable justification for paging.
+        urgency: One of ``immediate``, ``within_1h``, or
+            ``next_business_day``.
+        notification_channels: Optional list of channel names. Defaults
+            to ``["slack", "pager"]``.
+
+    Returns:
+        A JSON-encoded string with the new ``escalation_id``,
+        ``incident_id``, the requested ``urgency`` and channels, and the
+        webhook delivery status. When the incident was already escalated,
+        the response carries ``already_escalated: true`` instead.
+    """
     # Refuse to double-escalate. The agent should reuse the existing escalation.
     from backend.db.database import get_incident_by_id
     inc = await get_incident_by_id(incident_id)
@@ -299,7 +437,19 @@ async def escalate_tool(
 
 
 async def _send_webhook_with_retry(payload: dict) -> str:
-    """Send webhook with retry and DLQ on final failure. Returns delivery status."""
+    """Sends an escalation payload to the configured webhook.
+
+    Signs the body with HMAC-SHA256 when ``WEBHOOK_SECRET`` is set, retries
+    failures with exponential backoff up to ``WEBHOOK_MAX_RETRIES`` attempts,
+    and persists the payload to the ``webhook_dlq`` table when all attempts
+    are exhausted.
+
+    Args:
+        payload: A JSON-serializable dict describing the escalation.
+
+    Returns:
+        ``"delivered"`` on success, ``"failed"`` after exhausting retries.
+    """
     body = json.dumps(payload)
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if settings.WEBHOOK_SECRET:
@@ -346,6 +496,22 @@ TOOL_REGISTRY: dict[str, Any] = {
 
 
 async def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
+    """Dispatches an LLM tool call to its registered handler.
+
+    Centralizes exception handling so each tool function can throw
+    naturally and let this wrapper produce a consistent JSON error
+    payload. Errors are tagged with a ``severity`` field of either
+    ``transient`` (worth retrying) or ``fatal`` (do not retry).
+
+    Args:
+        tool_name: The function name as referenced by the LLM. Must be
+            present in :data:`TOOL_REGISTRY`.
+        arguments: Already-parsed keyword arguments for the tool.
+
+    Returns:
+        The tool's JSON-encoded result string, or a JSON ``error`` payload
+        when the tool raises an unhandled exception.
+    """
     func = TOOL_REGISTRY.get(tool_name)
     if func is None:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

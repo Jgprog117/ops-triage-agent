@@ -1,8 +1,18 @@
+"""FastAPI application entry point for the Ops Triage Agent.
+
+Wires together the alert simulator, the LLM-driven triage agent, the SSE
+broadcaster, and the dashboard frontend in a single ASGI application.
+The lifespan context performs all startup work — database init, host seeding,
+RAG index build, and simulator launch — and tears the same resources down
+when the server stops.
+"""
+
 import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -30,7 +40,21 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manages startup and shutdown for the application.
+
+    On startup, validates configuration, initializes the database, seeds host
+    inventory, builds the RAG knowledge base, registers the triage callback,
+    and launches the alert simulator as a background task. On shutdown, the
+    simulator is cancelled and all clients (DB, HTTP) are closed cleanly.
+
+    Args:
+        app: The FastAPI application instance being managed. Unused, but
+            required by the lifespan context-manager protocol.
+
+    Yields:
+        None. Control is yielded back to FastAPI between startup and shutdown.
+    """
     set_start_time(time.time())
     logger.info("Starting Ops Triage Agent...")
 
@@ -84,6 +108,17 @@ app.include_router(config.router)
 
 @app.get("/health")
 async def health_check() -> dict:
+    """Returns a liveness/readiness summary for the service.
+
+    Currently exercises the database with a trivial ``SELECT 1`` to confirm
+    the connection is open. The HTTP status code is always 200 — callers
+    should inspect the ``status`` field for ``healthy`` vs ``degraded``.
+
+    Returns:
+        A dict with three keys: ``status`` (``healthy`` or ``degraded``),
+        ``service`` (the service name), and ``checks`` (a per-dependency
+        status map).
+    """
     checks = {"database": "ok"}
     try:
         db = await get_db()
@@ -96,6 +131,11 @@ async def health_check() -> dict:
 
 @app.get("/")
 async def serve_frontend() -> FileResponse:
+    """Serves the single-page dashboard at the root path.
+
+    Returns:
+        A FileResponse pointing at ``frontend/index.html``.
+    """
     return FileResponse(FRONTEND_DIR / "index.html")
 
 

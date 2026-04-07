@@ -1,3 +1,11 @@
+"""System prompt and OpenAI-style tool schemas for the triage agent.
+
+The constants in this module are the entire contract between the LLM and
+the rest of the application. Editing the prompt or the tool descriptions
+changes agent behavior and should be coordinated with the corresponding
+implementations in :mod:`backend.agent.tools`.
+"""
+
 TRIAGE_SYSTEM_PROMPT = """You are an AI operations engineer performing incident triage for the data center infrastructure (dc-tokyo-01). Your job is to analyze incoming alerts, determine their severity and root cause, correlate with recent related alerts, consult runbooks for remediation steps, and decide whether to create an incident report or escalate.
 
 You have access to the following tools. Use them to gather information before making your triage decision. Always check for correlated alerts and consult the runbook before finalizing your assessment.
