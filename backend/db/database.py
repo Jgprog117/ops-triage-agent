@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     correlated_alert_ids TEXT,
     assigned_team TEXT,
     status TEXT DEFAULT 'open',
+    primary_alert_id TEXT,
+    escalated INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -120,8 +122,28 @@ async def init_database() -> None:
     await _db.execute("PRAGMA synchronous=NORMAL")
     await _db.execute("PRAGMA cache_size=-64000")
     await _db.executescript(SCHEMA)
+    await _migrate_incidents_columns(_db)
     await _db.commit()
     logger.info("Database initialized at %s", db_path)
+
+
+async def _migrate_incidents_columns(db: aiosqlite.Connection) -> None:
+    """Add columns introduced after initial schema. Safe to run repeatedly.
+    Indexes that depend on the new columns are created here too — they cannot
+    live in the SCHEMA executescript because executescript runs before the
+    ALTER TABLE statements on databases that pre-date the migration."""
+    cursor = await db.execute("PRAGMA table_info(incidents)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "primary_alert_id" not in existing:
+        await db.execute("ALTER TABLE incidents ADD COLUMN primary_alert_id TEXT")
+        logger.info("Migrated incidents: added primary_alert_id column")
+    if "escalated" not in existing:
+        await db.execute("ALTER TABLE incidents ADD COLUMN escalated INTEGER DEFAULT 0")
+        logger.info("Migrated incidents: added escalated column")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_incidents_status_primary "
+        "ON incidents(status, primary_alert_id)"
+    )
 
 
 async def close_database() -> None:
@@ -167,29 +189,50 @@ async def get_recent_alerts(
     category: str | None = None,
     severity: str | None = None,
     limit: int = 50,
+    exclude_id: str | None = None,
 ) -> list[dict]:
+    """Return recent alerts. Each row includes ``open_incident_id`` — the id of
+    the first open incident whose ``correlated_alert_ids`` contains the alert,
+    or NULL if none. This lets the agent see at-a-glance which alerts are
+    already being handled and avoid creating duplicate incidents."""
     db = await get_db()
-    conditions = ["timestamp >= datetime('now', ?)", ]
+    conditions = ["a.timestamp >= datetime('now', ?)"]
     params: list = [f"-{minutes_ago} minutes"]
 
     if rack:
-        conditions.append("rack = ?")
+        conditions.append("a.rack = ?")
         params.append(rack)
     if host:
-        conditions.append("host = ?")
+        conditions.append("a.host = ?")
         params.append(host)
     if category:
-        conditions.append("category = ?")
+        conditions.append("a.category = ?")
         params.append(category)
     if severity:
-        conditions.append("severity = ?")
+        conditions.append("a.severity = ?")
         params.append(severity)
+    if exclude_id:
+        conditions.append("a.id != ?")
+        params.append(exclude_id)
 
     where = " AND ".join(conditions)
     params.append(limit)
 
+    # The correlated subquery uses json_each to find any open incident whose
+    # correlated_alert_ids list contains this alert's id. Cheap at this scale
+    # and avoids a schema migration to a junction table.
     rows = await db.execute_fetchall(
-        f"SELECT * FROM alerts WHERE {where} ORDER BY timestamp DESC LIMIT ?",
+        f"""
+        SELECT a.*,
+               (SELECT i.id
+                  FROM incidents i, json_each(i.correlated_alert_ids) je
+                 WHERE je.value = a.id AND i.status = 'open'
+                 LIMIT 1) AS open_incident_id
+        FROM alerts a
+        WHERE {where}
+        ORDER BY a.timestamp DESC
+        LIMIT ?
+        """,
         params,
     )
     return [dict(row) for row in rows]
@@ -234,18 +277,106 @@ async def insert_incident(incident: dict) -> str:
     await db.execute(
         """INSERT INTO incidents
            (id, title, severity, summary, root_cause, remediation_steps,
-            correlated_alert_ids, assigned_team, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            correlated_alert_ids, assigned_team, status, primary_alert_id, escalated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             incident["id"], incident["title"], incident["severity"],
             incident["summary"], incident.get("root_cause"),
             json.dumps(incident.get("remediation_steps", [])),
             json.dumps(incident.get("correlated_alert_ids", [])),
             incident.get("assigned_team"), incident.get("status", "open"),
+            incident.get("primary_alert_id"),
+            1 if incident.get("escalated") else 0,
         ),
     )
     await db.commit()
     return incident["id"]
+
+
+async def attach_alert_to_incident(incident_id: str, alert_id: str) -> dict | None:
+    """Append ``alert_id`` to an open incident's correlated_alert_ids if not
+    already present. Returns the updated incident dict, or None if the
+    incident does not exist or is not open."""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT correlated_alert_ids, status FROM incidents WHERE id = ?",
+        (incident_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    if row["status"] != "open":
+        return None
+    existing = json.loads(row["correlated_alert_ids"] or "[]")
+    if alert_id not in existing:
+        existing.append(alert_id)
+        await db.execute(
+            "UPDATE incidents SET correlated_alert_ids = ? WHERE id = ?",
+            (json.dumps(existing), incident_id),
+        )
+        await db.commit()
+    return await get_incident_by_id(incident_id)
+
+
+async def find_open_incidents_for_alert(
+    rack: str | None = None,
+    host: str | None = None,
+    category: str | None = None,
+    minutes_ago: int = 60,
+    limit: int = 5,
+) -> list[dict]:
+    """Find open incidents whose primary alert matches any of the supplied
+    rack/host/category filters within the last ``minutes_ago`` minutes.
+    The agent calls this before create_incident to avoid duplicate records
+    when a real incident is already being tracked for the same scenario."""
+    if not (rack or host or category):
+        return []
+
+    db = await get_db()
+    or_conds: list[str] = []
+    params: list = [f"-{minutes_ago} minutes"]
+    if host:
+        or_conds.append("a.host = ?")
+        params.append(host)
+    if rack:
+        or_conds.append("a.rack = ?")
+        params.append(rack)
+    if category:
+        or_conds.append("a.category = ?")
+        params.append(category)
+
+    where_or = " OR ".join(or_conds)
+    params.append(limit)
+
+    rows = await db.execute_fetchall(
+        f"""
+        SELECT i.*
+          FROM incidents i
+          JOIN alerts a ON a.id = i.primary_alert_id
+         WHERE i.status = 'open'
+           AND i.created_at >= datetime('now', ?)
+           AND ({where_or})
+         ORDER BY i.created_at DESC
+         LIMIT ?
+        """,
+        params,
+    )
+    results = []
+    for row in rows:
+        d = dict(row)
+        d["remediation_steps"] = json.loads(d["remediation_steps"] or "[]")
+        d["correlated_alert_ids"] = json.loads(d["correlated_alert_ids"] or "[]")
+        results.append(d)
+    return results
+
+
+async def mark_incident_escalated(incident_id: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE incidents SET escalated = 1 WHERE id = ?",
+        (incident_id,),
+    )
+    await db.commit()
 
 
 async def get_incidents(status: str | None = None, limit: int = 50) -> list[dict]:

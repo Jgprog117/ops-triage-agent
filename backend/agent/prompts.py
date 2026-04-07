@@ -3,12 +3,15 @@ TRIAGE_SYSTEM_PROMPT = """You are an AI operations engineer performing incident 
 You have access to the following tools. Use them to gather information before making your triage decision. Always check for correlated alerts and consult the runbook before finalizing your assessment.
 
 Triage workflow:
-1. First, query recent alerts to find correlated events (same rack, host, or category)
-2. Look up host information for context
-3. Search runbooks for relevant procedures and thresholds
-4. Based on your findings, decide classification and next steps
-5. If the alert warrants tracking, create an incident
-6. If the incident is critical and requires immediate human attention, escalate
+1. Query recent alerts in the same rack/host/category to find correlated events. If any of them already have an `open_incident_id` set, the same scenario is already being tracked — go to step 6.
+2. Call `find_open_incidents` for the alert's rack/host/category. If a relevant open incident exists, **attach this alert to it instead of creating a new one**.
+3. Look up host information for context (only if you need hardware specs or recent incident history).
+4. Search runbooks for relevant procedures and thresholds.
+5. Decide classification using the rules below. Most alerts are NOT critical_escalation.
+6. Action:
+   - If an open incident already covers this alert: call `attach_to_incident` and reuse its escalation status. Do NOT create a duplicate incident. Do NOT re-escalate an already-escalated incident.
+   - Otherwise, if the alert warrants tracking: call `create_incident` once.
+   - Only call `escalate` if the alert meets the strict critical_escalation criteria below AND the incident is not already escalated.
 
 When you have completed your analysis, respond with your final triage report in the following JSON format (and nothing else):
 ```json
@@ -36,7 +39,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "query_recent_alerts",
-            "description": "Search recent alerts from the last N minutes, optionally filtered by rack, host, category, or severity. Use this to find correlated alerts.",
+            "description": "Search recent alerts from the last N minutes, optionally filtered by rack, host, category, or severity. Use this to find correlated alerts. The response includes an 'open_incident_id' field on each alert — if any of the returned alerts have one set, the same scenario is already being tracked and you should call find_open_incidents next, NOT create_incident.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -61,8 +64,63 @@ TOOL_DEFINITIONS = [
                         "type": "string",
                         "description": "Filter by severity (info, warning, critical)",
                     },
+                    "exclude_id": {
+                        "type": "string",
+                        "description": "Alert id to exclude from results (typically the alert you are currently triaging)",
+                    },
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_open_incidents",
+            "description": "Find open incidents whose primary alert matches the given rack, host, or category within the last hour. ALWAYS call this before create_incident — if a matching open incident exists, attach this alert to it with attach_to_incident instead of creating a duplicate. Returns an empty list when there is no match (in which case create_incident is appropriate).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rack": {
+                        "type": "string",
+                        "description": "Rack to look for open incidents in (e.g., 'rack-12')",
+                    },
+                    "host": {
+                        "type": "string",
+                        "description": "Host to look for open incidents on",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Alert category to look for (thermal, gpu, network, storage, power, memory)",
+                    },
+                    "minutes_ago": {
+                        "type": "integer",
+                        "description": "How far back to look in minutes (default: 60)",
+                        "default": 60,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "attach_to_incident",
+            "description": "Attach the alert you are triaging to an existing open incident. Use this whenever find_open_incidents returns a matching incident — it is the correct action for any follow-on alert in an active scenario. After calling this, do NOT call create_incident, and do NOT call escalate (the existing incident's escalation status is reused).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "incident_id": {
+                        "type": "string",
+                        "description": "The id of the existing open incident (e.g., 'INC-AB12CD34EF56')",
+                    },
+                    "alert_id": {
+                        "type": "string",
+                        "description": "The id of the alert being triaged",
+                    },
+                },
+                "required": ["incident_id", "alert_id"],
             },
         },
     },
@@ -104,7 +162,14 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "create_incident",
-            "description": "Create a formal incident record in the incident log. Use this when the alert requires tracking and follow-up.",
+            "description": (
+                "Create a NEW incident record. Call this only after find_open_incidents "
+                "has returned no matching incident. DO NOT call create_incident when: "
+                "(a) any alert returned by query_recent_alerts has an open_incident_id set, "
+                "(b) find_open_incidents returned a matching incident — use attach_to_incident "
+                "instead, or (c) the alert is an isolated info-level event (those should be "
+                "classified as 'noise' with no incident at all)."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -124,14 +189,18 @@ TOOL_DEFINITIONS = [
                     "correlated_alert_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "IDs of correlated alerts",
+                        "description": "IDs of correlated alerts (include the alert being triaged)",
+                    },
+                    "primary_alert_id": {
+                        "type": "string",
+                        "description": "The id of the alert being triaged. This becomes the canonical link for future dedupe lookups.",
                     },
                     "assigned_team": {
                         "type": "string",
                         "description": "Team to assign (dc-ops-tokyo, gpu-infra, network-ops, storage-team, power-facilities, ml-platform)",
                     },
                 },
-                "required": ["title", "severity", "summary"],
+                "required": ["title", "severity", "summary", "primary_alert_id"],
             },
         },
     },
@@ -139,7 +208,21 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "escalate",
-            "description": "Escalate an incident to the on-call team. Use this for critical issues that require immediate human attention.",
+            "description": (
+                "Page the on-call team. This wakes a human up — use it only when "
+                "the incident genuinely requires immediate attention. "
+                "DO NOT escalate when: "
+                "(1) the alert is an isolated warning with no correlated alerts — "
+                "use the 'acknowledged' classification instead; "
+                "(2) the alert is a single-PDU power fluctuation that may recover "
+                "(power escalation requires anomalies on MULTIPLE PDUs); "
+                "(3) the alert is a SMART pre-failure warning without correlated I/O "
+                "latency degradation — that is an 'incident', not an escalation; "
+                "(4) the incident has already been escalated — the tool will refuse "
+                "and you should not retry; "
+                "(5) you just attached this alert to an existing open incident — its "
+                "escalation status is already set."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
